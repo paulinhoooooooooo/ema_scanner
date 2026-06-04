@@ -1,0 +1,33 @@
+{
+  "telegram": {
+    "bot_token": "8928490322:AAEnKJNYXK5lMou1slCZPLTWWtbSw2-ipes",
+    "chat_id": 5234579829
+  },
+  "scan": {
+    "heure": "19:00",
+    "timezone": "Europe/Paris",
+    "timeframe": "1d",
+    "periode_historique": "6mo"
+  },
+  "ema": {
+    "courte": 21,
+    "longue": 55,
+    "tendance": 200
+  },
+  "signaux": {
+    "long_actif": true,
+    "short_actif": true,
+    "anticipation_actif": true,
+    "anticipation_marge_pct": 1.5,
+    "seuil_confirmation_pct": 0.3
+  },
+  "filtres": {
+    "volume_actif": false,
+    "volume_multiplicateur": 1.2,
+    "rsi_actif": false,
+    "rsi_min": 40,
+    "rsi_max": 65,
+    "adx_actif": false,
+    "adx_min": 20
+  }
+}
