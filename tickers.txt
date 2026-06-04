@@ -7,7 +7,6 @@
 
 # --- CAC 40 (exemples) ---
 MC.PA
-LVMH.PA
 TTE.PA
 SAN.PA
 BNP.PA
@@ -24,4 +23,12 @@ META
 TSLA
 AMZN
 
-# --- Ajoute tes titres ici ---
+# --- Health ---
+JNJ
+AMGEN
+LLY
+UNH
+MRK
+SAN
+ABBV
+HON
