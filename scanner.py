@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-#!/usr/bin/env python3
 """
-EMA Scanner — Détection de croisements EMA entre elles
-Surveille EMA55 vs EMA21, EMA13, EMA8
-Envoie des notifications Telegram dès qu'un signal est détecté.
+EMA Scanner — Croisements EMA + Rebond Bollinger en tendance haussière
 """
 
 import json
@@ -59,27 +56,34 @@ def calc_rsi(closes, periode=14):
     return round(float(rsi.iloc[-1]), 1)
 
 def calc_adx(df, periode=14):
-    high = df["High"].squeeze().astype(float)
-    low = df["Low"].squeeze().astype(float)
+    high  = df["High"].squeeze().astype(float)
+    low   = df["Low"].squeeze().astype(float)
     close = df["Close"].squeeze().astype(float)
     tr = pd.concat([
         high - low,
         (high - close.shift()).abs(),
         (low - close.shift()).abs()
     ], axis=1).max(axis=1)
-    plus_dm = high.diff()
+    plus_dm  = high.diff()
     minus_dm = -low.diff()
-    plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
+    plus_dm  = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
     minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
-    atr = tr.ewm(alpha=1/periode, min_periods=periode).mean()
-    plus_di = 100 * plus_dm.ewm(alpha=1/periode, min_periods=periode).mean() / atr
+    atr      = tr.ewm(alpha=1/periode, min_periods=periode).mean()
+    plus_di  = 100 * plus_dm.ewm(alpha=1/periode, min_periods=periode).mean() / atr
     minus_di = 100 * minus_dm.ewm(alpha=1/periode, min_periods=periode).mean() / atr
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
-    adx = dx.ewm(alpha=1/periode, min_periods=periode).mean()
+    dx       = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    adx      = dx.ewm(alpha=1/periode, min_periods=periode).mean()
     return round(float(adx.iloc[-1]), 1)
 
+def calc_bollinger(closes, periode=20, nb_ecarts=2):
+    sma   = closes.rolling(window=periode).mean()
+    std   = closes.rolling(window=periode).std()
+    bande_haute = sma + nb_ecarts * std
+    bande_basse = sma - nb_ecarts * std
+    return bande_haute, bande_basse
+
 def telecharger_donnees(ticker, config):
-    tf = config["scan"]["timeframe"]
+    tf      = config["scan"]["timeframe"]
     periode = config["scan"]["periode_historique"]
     try:
         df = yf.download(ticker, period=periode, interval=tf, progress=False, auto_adjust=True)
@@ -98,8 +102,9 @@ def analyser(ticker, df, config):
     cfg_ema = config["ema"]
     cfg_sig = config["signaux"]
     cfg_fil = config["filtres"]
+    cfg_bol = config.get("bollinger", {"periode": 20, "ecarts": 2, "actif": True})
 
-    closes = df["Close"].squeeze()
+    closes  = df["Close"].squeeze()
     if isinstance(closes, pd.DataFrame):
         closes = closes.iloc[:, 0]
     closes = closes.dropna().astype(float)
@@ -121,29 +126,33 @@ def analyser(ticker, df, config):
     vol_actuel = float(volumes.iloc[-1])
     vol_moy    = float(volumes.iloc[-20:].mean())
 
-    ok_volume = (not cfg_fil["volume_actif"]) or (vol_actuel >= vol_moy * cfg_fil["volume_multiplicateur"])
-    ok_rsi    = (not cfg_fil["rsi_actif"])    or (cfg_fil["rsi_min"] <= rsi <= cfg_fil["rsi_max"])
-    ok_adx    = (not cfg_fil["adx_actif"])    or (adx >= cfg_fil["adx_min"])
+    ok_volume  = (not cfg_fil["volume_actif"]) or (vol_actuel >= vol_moy * cfg_fil["volume_multiplicateur"])
+    ok_rsi     = (not cfg_fil["rsi_actif"])    or (cfg_fil["rsi_min"] <= rsi <= cfg_fil["rsi_max"])
+    ok_adx     = (not cfg_fil["adx_actif"])    or (adx >= cfg_fil["adx_min"])
     filtres_ok = ok_volume and ok_rsi and ok_adx
 
-    marge = cfg_sig["anticipation_marge_pct"]
-    signaux = []
+    marge    = cfg_sig["anticipation_marge_pct"]
+    signaux  = []
 
-    # Paires : EMA55 comparée à chaque EMA rapide
+    e55_act = float(ema55.iloc[-1])
+    e55_pre = float(ema55.iloc[-2])
+    e8_act  = float(ema8.iloc[-1])
+    e13_act = float(ema13.iloc[-1])
+    e21_act = float(ema21.iloc[-1])
+
+    # ── Période haussière : EMA55 est la plus basse ──
+    periode_haussiere = e55_act < e8_act and e55_act < e13_act and e55_act < e21_act
+
+    # ── Croisements EMA55 vs chaque EMA rapide ──
     paires = [
-        (ema21, "EMA21"),
-        (ema13, "EMA13"),
-        (ema8,  "EMA8"),
+        (ema21, float(ema21.iloc[-2]), e21_act, "EMA21"),
+        (ema13, float(ema13.iloc[-2]), e13_act, "EMA13"),
+        (ema8,  float(ema8.iloc[-2]),  e8_act,  "EMA8"),
     ]
 
-    for ema_rapide, label in paires:
-        e55_act = float(ema55.iloc[-1])
-        e55_pre = float(ema55.iloc[-2])
-        er_act  = float(ema_rapide.iloc[-1])
-        er_pre  = float(ema_rapide.iloc[-2])
+    for _, er_pre, er_act, label in paires:
         gap_pct = abs(e55_act - er_act) / er_act * 100
 
-        # Signal HAUSSIER : EMA55 repasse au-dessus de l'EMA rapide
         if cfg_sig["long_actif"] and filtres_ok:
             if e55_pre <= er_pre and e55_act > er_act:
                 signaux.append({
@@ -155,7 +164,6 @@ def analyser(ticker, df, config):
                     )
                 })
 
-        # Signal BAISSIER : EMA55 passe en dessous de l'EMA rapide
         if cfg_sig["short_actif"] and filtres_ok:
             if e55_pre >= er_pre and e55_act < er_act:
                 signaux.append({
@@ -167,9 +175,7 @@ def analyser(ticker, df, config):
                     )
                 })
 
-        # Anticipation : EMA55 s'approche de l'EMA rapide
         if cfg_sig["anticipation_actif"] and gap_pct <= marge:
-            # Pas encore croisé
             if (e55_act > er_act) == (e55_pre > er_pre):
                 direction = "baissier" if e55_act > er_act else "haussier"
                 emoji_ant = "⚠️🔴" if direction == "baissier" else "⚠️🟢"
@@ -182,6 +188,21 @@ def analyser(ticker, df, config):
                         f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
                     )
                 })
+
+    # ── Signal Bollinger : clôture sous la bande basse en période haussière ──
+    if cfg_bol.get("actif", True) and periode_haussiere:
+        _, bande_basse = calc_bollinger(closes, cfg_bol["periode"], cfg_bol["ecarts"])
+        bb_act = float(bande_basse.iloc[-1])
+        if prix_actuel <= bb_act:
+            signaux.append({
+                "emoji": "🔵",
+                "titre": f"Bollinger Bas en Haussier — {ticker}",
+                "detail": (
+                    f"Clôture ({prix_actuel:.2f}) sous la bande basse Bollinger ({bb_act:.2f})\n"
+                    f"Période haussière confirmée (EMA55 la plus basse)\n"
+                    f"RSI : {rsi} | ADX : {adx}"
+                )
+            })
 
     return signaux
 
