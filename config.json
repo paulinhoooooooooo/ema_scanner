@@ -3,23 +3,23 @@
     "bot_token": "8928490322:AAEnKJNYXK5lMou1slCZPLTWWtbSw2-ipes",
     "chat_id": 5234579829
   },
-  "scan": {
+   "scan": {
     "heure": "22:15",
     "timezone": "Europe/Paris",
     "timeframe": "1d",
     "periode_historique": "6mo"
   },
   "ema": {
-    "courte": 21,
-    "longue": 55,
-    "tendance": 200
+    "ema8": 8,
+    "ema13": 13,
+    "ema21": 21,
+    "ema55": 55
   },
   "signaux": {
     "long_actif": true,
     "short_actif": true,
     "anticipation_actif": true,
-    "anticipation_marge_pct": 1.5,
-    "seuil_confirmation_pct": 0.3
+    "anticipation_marge_pct": 1.5
   },
   "filtres": {
     "volume_actif": false,
