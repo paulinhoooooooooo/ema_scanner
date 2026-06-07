@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-EMA Scanner — Croisements EMA + Rebond Bollinger en tendance haussière
+EMA Scanner — Croisements EMA55 vs EMA8/13/21 + Bollinger en haussier
 """
 
 import json
@@ -76,11 +76,9 @@ def calc_adx(df, periode=14):
     return round(float(adx.iloc[-1]), 1)
 
 def calc_bollinger(closes, periode=20, nb_ecarts=2):
-    sma   = closes.rolling(window=periode).mean()
-    std   = closes.rolling(window=periode).std()
-    bande_haute = sma + nb_ecarts * std
-    bande_basse = sma - nb_ecarts * std
-    return bande_haute, bande_basse
+    sma = closes.rolling(window=periode).mean()
+    std = closes.rolling(window=periode).std()
+    return sma + nb_ecarts * std, sma - nb_ecarts * std
 
 def telecharger_donnees(ticker, config):
     tf      = config["scan"]["timeframe"]
@@ -104,7 +102,7 @@ def analyser(ticker, df, config):
     cfg_fil = config["filtres"]
     cfg_bol = config.get("bollinger", {"periode": 20, "ecarts": 2, "actif": True})
 
-    closes  = df["Close"].squeeze()
+    closes = df["Close"].squeeze()
     if isinstance(closes, pd.DataFrame):
         closes = closes.iloc[:, 0]
     closes = closes.dropna().astype(float)
@@ -131,65 +129,56 @@ def analyser(ticker, df, config):
     ok_adx     = (not cfg_fil["adx_actif"])    or (adx >= cfg_fil["adx_min"])
     filtres_ok = ok_volume and ok_rsi and ok_adx
 
-    marge    = cfg_sig["anticipation_marge_pct"]
-    signaux  = []
+    signaux = []
 
     e55_act = float(ema55.iloc[-1])
     e55_pre = float(ema55.iloc[-2])
     e8_act  = float(ema8.iloc[-1])
+    e8_pre  = float(ema8.iloc[-2])
     e13_act = float(ema13.iloc[-1])
+    e13_pre = float(ema13.iloc[-2])
     e21_act = float(ema21.iloc[-1])
+    e21_pre = float(ema21.iloc[-2])
 
-    # ── Période haussière : EMA55 est la plus basse ──
+    # Période haussière : EMA55 est la plus basse
     periode_haussiere = e55_act < e8_act and e55_act < e13_act and e55_act < e21_act
 
-    # ── Croisements EMA55 vs chaque EMA rapide ──
+    # ── Croisements EMA55 vs EMA8, EMA13, EMA21 ──
     paires = [
-        (ema21, float(ema21.iloc[-2]), e21_act, "EMA21"),
-        (ema13, float(ema13.iloc[-2]), e13_act, "EMA13"),
-        (ema8,  float(ema8.iloc[-2]),  e8_act,  "EMA8"),
+        (e8_pre,  e8_act,  "EMA8"),
+        (e13_pre, e13_act, "EMA13"),
+        (e21_pre, e21_act, "EMA21"),
     ]
 
-    for _, er_pre, er_act, label in paires:
-        gap_pct = abs(e55_act - er_act) / er_act * 100
+    for er_pre, er_act, label in paires:
 
-        if cfg_sig["long_actif"] and filtres_ok:
-            if e55_pre <= er_pre and e55_act > er_act:
-                signaux.append({
-                    "emoji": "🟢",
-                    "titre": f"Croisement Haussier — {ticker}",
-                    "detail": (
-                        f"EMA55 ({e55_act:.2f}) vient de passer AU-DESSUS de {label} ({er_act:.2f})\n"
-                        f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
-                    )
-                })
-
+        # EMA55 coupe PAR LE HAUT → anticipation baissière
         if cfg_sig["short_actif"] and filtres_ok:
-            if e55_pre >= er_pre and e55_act < er_act:
+            if e55_pre <= er_pre and e55_act > er_act:
                 signaux.append({
                     "emoji": "🔴",
                     "titre": f"Croisement Baissier — {ticker}",
                     "detail": (
-                        f"EMA55 ({e55_act:.2f}) vient de passer EN-DESSOUS de {label} ({er_act:.2f})\n"
+                        f"EMA55 ({e55_act:.2f}) vient de couper {label} ({er_act:.2f}) par le haut\n"
+                        f"Fin possible de la période haussière\n"
                         f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
                     )
                 })
 
-        if cfg_sig["anticipation_actif"] and gap_pct <= marge:
-            if (e55_act > er_act) == (e55_pre > er_pre):
-                direction = "baissier" if e55_act > er_act else "haussier"
-                emoji_ant = "⚠️🔴" if direction == "baissier" else "⚠️🟢"
+        # EMA55 coupe PAR LE BAS → anticipation haussière
+        if cfg_sig["long_actif"] and filtres_ok:
+            if e55_pre >= er_pre and e55_act < er_act:
                 signaux.append({
-                    "emoji": emoji_ant,
-                    "titre": f"Anticipation {direction} — {ticker}",
+                    "emoji": "🟢",
+                    "titre": f"Croisement Haussier — {ticker}",
                     "detail": (
-                        f"EMA55 ({e55_act:.2f}) à {gap_pct:.2f}% de {label} ({er_act:.2f})\n"
-                        f"Croisement {direction} imminent\n"
+                        f"EMA55 ({e55_act:.2f}) vient de couper {label} ({er_act:.2f}) par le bas\n"
+                        f"Début possible d'une période haussière\n"
                         f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
                     )
                 })
 
-    # ── Signal Bollinger : clôture sous la bande basse en période haussière ──
+    # ── Signal Bollinger : clôture sous bande basse en période haussière ──
     if cfg_bol.get("actif", True) and periode_haussiere:
         _, bande_basse = calc_bollinger(closes, cfg_bol["periode"], cfg_bol["ecarts"])
         bb_act = float(bande_basse.iloc[-1])
