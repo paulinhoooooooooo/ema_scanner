@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-EMA Scanner — Croisements EMA55 vs EMA8/13/21 + Bollinger en haussier
+EMA Scanner — Cycles haussiers/baissiers + Croisements EMA55 + Bollinger
 """
 
 import json
@@ -140,10 +140,37 @@ def analyser(ticker, df, config):
     e21_act = float(ema21.iloc[-1])
     e21_pre = float(ema21.iloc[-2])
 
-    # Période haussière : EMA55 est la plus basse
-    periode_haussiere = e55_act < e8_act and e55_act < e13_act and e55_act < e21_act
+    # État cycle aujourd'hui et hier
+    haussier_act = e55_act < e8_act and e55_act < e13_act and e55_act < e21_act
+    baissier_act = e55_act > e8_act and e55_act > e13_act and e55_act > e21_act
+    haussier_pre = e55_pre < e8_pre and e55_pre < e13_pre and e55_pre < e21_pre
+    baissier_pre = e55_pre > e8_pre and e55_pre > e13_pre and e55_pre > e21_pre
 
-    # ── Croisements EMA55 vs EMA8, EMA13, EMA21 ──
+    # ── 🟢 Début cycle haussier : EMA55 vient de devenir la plus basse ──
+    if not haussier_pre and haussier_act:
+        signaux.append({
+            "emoji": "🟢",
+            "titre": f"DÉBUT CYCLE HAUSSIER — {ticker}",
+            "detail": (
+                f"EMA55 ({e55_act:.2f}) est maintenant la plus basse\n"
+                f"EMA8 : {e8_act:.2f} | EMA13 : {e13_act:.2f} | EMA21 : {e21_act:.2f}\n"
+                f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
+            )
+        })
+
+    # ── 🔴 Fin cycle haussier : EMA55 vient de devenir la plus haute ──
+    if not baissier_pre and baissier_act:
+        signaux.append({
+            "emoji": "🔴",
+            "titre": f"FIN CYCLE HAUSSIER — {ticker}",
+            "detail": (
+                f"EMA55 ({e55_act:.2f}) est maintenant la plus haute\n"
+                f"EMA8 : {e8_act:.2f} | EMA13 : {e13_act:.2f} | EMA21 : {e21_act:.2f}\n"
+                f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
+            )
+        })
+
+    # ── Croisements individuels EMA55 vs EMA8, EMA13, EMA21 ──
     paires = [
         (e8_pre,  e8_act,  "EMA8"),
         (e13_pre, e13_act, "EMA13"),
@@ -152,34 +179,32 @@ def analyser(ticker, df, config):
 
     for er_pre, er_act, label in paires:
 
-        # EMA55 coupe PAR LE HAUT → anticipation baissière
-        if cfg_sig["short_actif"] and filtres_ok:
-            if e55_pre <= er_pre and e55_act > er_act:
-                signaux.append({
-                    "emoji": "🔴",
-                    "titre": f"Croisement Baissier — {ticker}",
-                    "detail": (
-                        f"EMA55 ({e55_act:.2f}) vient de couper {label} ({er_act:.2f}) par le haut\n"
-                        f"Fin possible de la période haussière\n"
-                        f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
-                    )
-                })
-
-        # EMA55 coupe PAR LE BAS → anticipation haussière
+        # 🟡 Croisement haussier : EMA55 coupe par le bas
         if cfg_sig["long_actif"] and filtres_ok:
             if e55_pre >= er_pre and e55_act < er_act:
                 signaux.append({
-                    "emoji": "🟢",
+                    "emoji": "🟡",
                     "titre": f"Croisement Haussier — {ticker}",
                     "detail": (
-                        f"EMA55 ({e55_act:.2f}) vient de couper {label} ({er_act:.2f}) par le bas\n"
-                        f"Début possible d'une période haussière\n"
+                        f"EMA55 ({e55_act:.2f}) vient de passer SOUS {label} ({er_act:.2f})\n"
                         f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
                     )
                 })
 
-    # ── Signal Bollinger : clôture sous bande basse en période haussière ──
-    if cfg_bol.get("actif", True) and periode_haussiere:
+        # 🟠 Croisement baissier : EMA55 coupe par le haut
+        if cfg_sig["short_actif"] and filtres_ok:
+            if e55_pre <= er_pre and e55_act > er_act:
+                signaux.append({
+                    "emoji": "🟠",
+                    "titre": f"Croisement Baissier — {ticker}",
+                    "detail": (
+                        f"EMA55 ({e55_act:.2f}) vient de passer AU-DESSUS de {label} ({er_act:.2f})\n"
+                        f"Prix : {prix_actuel:.2f} | RSI : {rsi} | ADX : {adx}"
+                    )
+                })
+
+    # ── 🔵 Bollinger bas en période haussière ──
+    if cfg_bol.get("actif", True) and haussier_act:
         _, bande_basse = calc_bollinger(closes, cfg_bol["periode"], cfg_bol["ecarts"])
         bb_act = float(bande_basse.iloc[-1])
         if prix_actuel <= bb_act:
