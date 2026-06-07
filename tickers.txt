@@ -6,13 +6,7 @@
 # Les lignes commençant par # sont ignorées
 
 # --- CAC 40 (exemples) ---
-MC.PA
-TTE.PA
 SAN.PA
-BNP.PA
-AIR.PA
-OR.PA
-SU.PA
 
 # --- US Tech ---
 AAPL
@@ -32,3 +26,6 @@ MRK
 SAN
 ABBV
 HON
+
+# --- GOLD ---
+GOLD
