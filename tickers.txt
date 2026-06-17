@@ -16,6 +16,8 @@ GOOGL
 META
 TSLA
 AMZN
+QQQ
+SPX
 
 # --- Health ---
 JNJ
@@ -27,6 +29,7 @@ SAN
 ABBV
 HON
 IPN
+MRNA
 
 # --- GOLD ---
 GOLD
