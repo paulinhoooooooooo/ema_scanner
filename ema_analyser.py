@@ -342,7 +342,7 @@ tbody td{padding:7px 9px;border-bottom:0.5px solid #f0ede8;white-space:nowrap}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:#faf9f6}
 .sl-a-col{background:#f0f6ff}.sl-b-col{background:#f0f8f0}.sl-c-col{background:#fdf6ec}.sl-d-col{background:#f8f0ff}
-.bb-col{background:#fef9ec;min-width:160px}.bb-col2{background:#fef3f0;min-width:160px}.bb-col3{background:#f0f6ff;min-width:160px}
+.bb-col{background:#fef9ec;min-width:160px}.bb-col2{background:#fef3f0;min-width:160px}.bb-col3{background:#f0f6ff;min-width:160px}.bb-col4{background:#f8f0ff;min-width:160px}
 .bb-indi{font-size:10px;color:#888;margin-left:3px;white-space:nowrap}
 .ht-col{background:#eef7f4;min-width:240px;max-width:320px;vertical-align:top;font-size:11px}
 .badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:500}
@@ -440,6 +440,10 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
                                              SL_CONFIGS[2]["sl_init"],
                                              SL_CONFIGS[2]["palier"],
                                              SL_CONFIGS[2]["be"])
+        bb_sld, sum_sld = calc_bb_rendement(jours, mode,
+                                             SL_CONFIGS[3]["sl_init"],
+                                             SL_CONFIGS[3]["palier"],
+                                             SL_CONFIGS[3]["be"])
 
         # BB rendement séquentiel (SL A, SL B, SL C) — re-entre seulement après SL
         bb_seq_sla, sum_seq_sla = calc_bb_rendement_seq(jours, mode,
@@ -454,6 +458,10 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
                                              SL_CONFIGS[2]["sl_init"],
                                              SL_CONFIGS[2]["palier"],
                                              SL_CONFIGS[2]["be"])
+        bb_seq_sld, sum_seq_sld = calc_bb_rendement_seq(jours, mode,
+                                             SL_CONFIGS[3]["sl_init"],
+                                             SL_CONFIGS[3]["palier"],
+                                             SL_CONFIGS[3]["be"])
 
         # Indicateurs au signal
         j0  = jours[0]
@@ -481,15 +489,19 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
             "bb_sla":        bb_sla,
             "bb_slb":        bb_slb,
             "bb_slc":        bb_slc,
+            "bb_sld":        bb_sld,
             "sum_sla":       sum_sla,
             "sum_slb":       sum_slb,
             "sum_slc":       sum_slc,
+            "sum_sld":       sum_sld,
             "bb_seq_sla":    bb_seq_sla,
             "bb_seq_slb":    bb_seq_slb,
             "bb_seq_slc":    bb_seq_slc,
+            "bb_seq_sld":    bb_seq_sld,
             "sum_seq_sla":   sum_seq_sla,
             "sum_seq_slb":   sum_seq_slb,
             "sum_seq_slc":   sum_seq_slc,
+            "sum_seq_sld":   sum_seq_sld,
         })
 
     if not resultats:
@@ -570,25 +582,31 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
   <th class="bb-col">Rendement BB (SL A -2.5% / pal.5%)</th>
   <th class="bb-col2">Rendement BB (SL B -5% / pal.5%)</th>
   <th class="bb-col3">Rendement BB (SL C -7.5% / pal.7.5%)</th>
+  <th class="bb-col4">Rendement BB (SL D -2.5% / BE+5% / pal.5%)</th>
   <th class="bb-col">BB Séquentiel (SL A -2.5% / pal.5%)</th>
   <th class="bb-col2">BB Séquentiel (SL B -5% / pal.5%)</th>
   <th class="bb-col3">BB Séquentiel (SL C -7.5% / pal.7.5%)</th>
+  <th class="bb-col4">BB Séquentiel (SL D -2.5% / BE+5% / pal.5%)</th>
 </tr></thead>
 <tbody>""")
 
     cumul_sla_global = 0.0
     cumul_slb_global = 0.0
     cumul_slc_global = 0.0
+    cumul_sld_global = 0.0
     cumul_seq_sla_global = 0.0
     cumul_seq_slb_global = 0.0
     cumul_seq_slc_global = 0.0
+    cumul_seq_sld_global = 0.0
     # Pour taux de réussite par touche BB
     bb_wins_sla = bb_total_sla = 0
     bb_wins_slb = bb_total_slb = 0
     bb_wins_slc = bb_total_slc = 0
+    bb_wins_sld = bb_total_sld = 0
     bb_wins_seq_sla = bb_total_seq_sla = 0
     bb_wins_seq_slb = bb_total_seq_slb = 0
     bb_wins_seq_slc = bb_total_seq_slc = 0
+    bb_wins_seq_sld = bb_total_seq_sld = 0
 
     for idx, r in enumerate(resultats):
         # Badges principaux
@@ -622,6 +640,7 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         bb_sla_html = bb_subrows(r["bb_sla"], cumul_sla_global)
         bb_slb_html = bb_subrows(r["bb_slb"], cumul_slb_global)
         bb_slc_html = bb_subrows(r["bb_slc"], cumul_slc_global)
+        bb_sld_html = bb_subrows(r["bb_sld"], cumul_sld_global)
 
         # Colonnes séquentielles — sous-lignes avec raison de sortie
         def bb_seq_subrows(bb_list):
@@ -637,36 +656,45 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         bb_seq_sla_html = bb_seq_subrows(r["bb_seq_sla"])
         bb_seq_slb_html = bb_seq_subrows(r["bb_seq_slb"])
         bb_seq_slc_html = bb_seq_subrows(r["bb_seq_slc"])
+        bb_seq_sld_html = bb_seq_subrows(r["bb_seq_sld"])
 
         # Totaux en bas de chaque cycle
         sum_sla_b     = badge_pct(r["sum_sla"])
         sum_slb_b     = badge_pct(r["sum_slb"])
         sum_slc_b     = badge_pct(r["sum_slc"])
+        sum_sld_b     = badge_pct(r["sum_sld"])
         sum_seq_sla_b = badge_pct(r["sum_seq_sla"])
         sum_seq_slb_b = badge_pct(r["sum_seq_slb"])
         sum_seq_slc_b = badge_pct(r["sum_seq_slc"])
+        sum_seq_sld_b = badge_pct(r["sum_seq_sld"])
 
         bb_sla_html     += f'<div style="margin-top:4px;font-weight:500">∑{sum_sla_b}</div>'
         bb_slb_html     += f'<div style="margin-top:4px;font-weight:500">∑{sum_slb_b}</div>'
         bb_slc_html     += f'<div style="margin-top:4px;font-weight:500">∑{sum_slc_b}</div>'
+        bb_sld_html     += f'<div style="margin-top:4px;font-weight:500">∑{sum_sld_b}</div>'
         bb_seq_sla_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_seq_sla_b}</div>'
         bb_seq_slb_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_seq_slb_b}</div>'
         bb_seq_slc_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_seq_slc_b}</div>'
+        bb_seq_sld_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_seq_sld_b}</div>'
 
         cumul_sla_global     += r["sum_sla"]
         cumul_slb_global     += r["sum_slb"]
         cumul_slc_global     += r["sum_slc"]
+        cumul_sld_global     += r["sum_sld"]
         cumul_seq_sla_global += r["sum_seq_sla"]
         cumul_seq_slb_global += r["sum_seq_slb"]
         cumul_seq_slc_global += r["sum_seq_slc"]
+        cumul_seq_sld_global += r["sum_seq_sld"]
 
         # Comptage gains/pertes pour taux de réussite
         for e in r["bb_sla"]:     bb_wins_sla += e["pct"] > 0;     bb_total_sla += 1
         for e in r["bb_slb"]:     bb_wins_slb += e["pct"] > 0;     bb_total_slb += 1
         for e in r["bb_slc"]:     bb_wins_slc += e["pct"] > 0;     bb_total_slc += 1
+        for e in r["bb_sld"]:     bb_wins_sld += e["pct"] > 0;     bb_total_sld += 1
         for e in r["bb_seq_sla"]: bb_wins_seq_sla += e["pct"] > 0; bb_total_seq_sla += 1
         for e in r["bb_seq_slb"]: bb_wins_seq_slb += e["pct"] > 0; bb_total_seq_slb += 1
         for e in r["bb_seq_slc"]: bb_wins_seq_slc += e["pct"] > 0; bb_total_seq_slc += 1
+        for e in r["bb_seq_sld"]: bb_wins_seq_sld += e["pct"] > 0; bb_total_seq_sld += 1
 
         html.append(f"""<tr>
 <td>{idx+1}</td>
@@ -685,9 +713,11 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 <td class="bb-col">{bb_sla_html}</td>
 <td class="bb-col2">{bb_slb_html}</td>
 <td class="bb-col3">{bb_slc_html}</td>
+<td class="bb-col4">{bb_sld_html}</td>
 <td class="bb-col">{bb_seq_sla_html}</td>
 <td class="bb-col2">{bb_seq_slb_html}</td>
 <td class="bb-col3">{bb_seq_slc_html}</td>
+<td class="bb-col4">{bb_seq_sld_html}</td>
 </tr>""")
 
     # Ligne totaux
@@ -700,9 +730,11 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
     total_sla_b     = badge_pct(round(cumul_sla_global, 1))
     total_slb_b     = badge_pct(round(cumul_slb_global, 1))
     total_slc_b     = badge_pct(round(cumul_slc_global, 1))
+    total_sld_b     = badge_pct(round(cumul_sld_global, 1))
     total_seq_sla_b = badge_pct(round(cumul_seq_sla_global, 1))
     total_seq_slb_b = badge_pct(round(cumul_seq_slb_global, 1))
     total_seq_slc_b = badge_pct(round(cumul_seq_slc_global, 1))
+    total_seq_sld_b = badge_pct(round(cumul_seq_sld_global, 1))
 
     def wr_badge(wins, total):
         if total == 0:
@@ -719,9 +751,11 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 <td class="bb-col"><b>∑{total_sla_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_sla, bb_total_sla)}</div></td>
 <td class="bb-col2"><b>∑{total_slb_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_slb, bb_total_slb)}</div></td>
 <td class="bb-col3"><b>∑{total_slc_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_slc, bb_total_slc)}</div></td>
+<td class="bb-col4"><b>∑{total_sld_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_sld, bb_total_sld)}</div></td>
 <td class="bb-col"><b>∑{total_seq_sla_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_seq_sla, bb_total_seq_sla)}</div></td>
 <td class="bb-col2"><b>∑{total_seq_slb_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_seq_slb, bb_total_seq_slb)}</div></td>
 <td class="bb-col3"><b>∑{total_seq_slc_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_seq_slc, bb_total_seq_slc)}</div></td>
+<td class="bb-col4"><b>∑{total_seq_sld_b}</b><div style="margin-top:3px;font-weight:400;font-size:11px">Réussite : {wr_badge(bb_wins_seq_sld, bb_total_seq_sld)}</div></td>
 </tr>""")
 
     html.append("</tbody></table></div>")
