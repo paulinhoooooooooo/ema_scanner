@@ -138,7 +138,10 @@ def detecter_cycles(df, config, mode):
             }
             en_cycle = True
 
-        if not actif and en_cycle:
+        # Le cycle se termine uniquement quand le cycle OPPOSÉ commence
+        # (pas dès que la condition stricte cesse d'être vraie)
+        cycle_oppose = haus_act if mode == "short" else bais_act
+        if cycle_oppose and en_cycle:
             en_cycle = False
             if cycle_courant:
                 cycles.append(cycle_courant)
