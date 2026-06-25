@@ -225,12 +225,14 @@ def simuler_sl(jours, entry_idx, mode, sl_init, palier, be=None):
 
 def calc_bb_rendement(jours, mode, sl_init, palier, be=None):
     """
-    Pour chaque jour du cycle : simule SL A/B depuis CE jour jusqu'à fin de cycle.
+    Pour chaque jour avec une touche BB : simule SL depuis CE jour jusqu'à fin de cycle.
     Retourne liste de (date, result_pct, rsi, adx, vol) et la somme totale.
     """
     resultats = []
     total = 0.0
     for k, j in enumerate(jours):
+        if not j["touche_bb"]:
+            continue  # uniquement les jours avec touche BB
         res, _, _ = simuler_sl(jours, k, mode, sl_init, palier, be)
         total += res
         resultats.append({
