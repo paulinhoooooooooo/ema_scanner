@@ -556,6 +556,325 @@ def td_table(groups, bb_data):
     return f'<div class="table-wrap"><table>{hdr}{body}</tbody></table></div>'
 
 
+# ─── Section 9 : Synthèse avancée ────────────────────────────────────────────
+
+def _cell_color(w):
+    if w >= 65: return "#d4edda", "#0f6e56"
+    if w >= 55: return "#eaf3de", "#3b6d11"
+    if w >= 45: return "#fef9ec", "#ba7517"
+    if w >= 35: return "#fff0e0", "#a0580c"
+    return "#fcebeb", "#a32d2d"
+
+
+def _matrix_html(bb_data, tranches_row, tranches_col, key_row, key_col, title, note=""):
+    """Heatmap 2D : win% SL A pour chaque paire de tranches."""
+    col_labels = [t[0] for t in tranches_col]
+    hdr = f'<thead><tr><th style="background:#f5f4f0;white-space:nowrap">{title}</th>'
+    for lbl in col_labels:
+        hdr += f'<th style="background:#f5f4f0;text-align:center;white-space:nowrap">{lbl}</th>'
+    hdr += '</tr></thead>'
+
+    body = '<tbody>'
+    for r_lbl, r_lo, r_hi in tranches_row:
+        body += f'<tr><td style="font-weight:600;white-space:nowrap;padding:8px 10px">{r_lbl}</td>'
+        for c_lbl, c_lo, c_hi in tranches_col:
+            sub = [b for b in bb_data
+                   if r_lo <= key_row(b) < r_hi and c_lo <= key_col(b) < c_hi]
+            n = len(sub)
+            if n < 2:
+                body += '<td style="text-align:center;color:#ccc;background:#fafafa;padding:6px">—</td>'
+            else:
+                w   = round(sum(1 for b in sub if b["pct_sla"] > 0) / n * 100)
+                moy = round(sum(b["pct_sla"] for b in sub) / n, 1)
+                bg, tc = _cell_color(w)
+                mc = "#0f6e56" if moy > 0 else "#a32d2d"
+                body += (f'<td style="text-align:center;background:{bg};padding:8px 6px">'
+                         f'<div style="font-size:14px;font-weight:700;color:{tc}">{w}%</div>'
+                         f'<div style="font-size:10px;color:#888">{n} sig.</div>'
+                         f'<div style="font-size:10px;color:{mc}">{moy:+.1f}%</div>'
+                         f'</td>')
+        body += '</tr>'
+    body += '</tbody>'
+
+    note_html = f'<p style="font-size:11px;color:#888;margin-bottom:8px">{note}</p>' if note else ""
+    return f'{note_html}<div class="table-wrap"><table>{hdr}{body}</table></div>'
+
+
+def _section_synthese(bb_data_view, mode, bb_rsi, bb_adx, bb_vol, bb_dur):
+    html = []
+    nb   = len(bb_data_view)
+    if nb < 5:
+        return html
+
+    rsi_lo = 50 if mode == "short" else 40
+
+    if mode == "short":
+        RSI_BB = [("RSI < 50",0,50),("RSI 50–60",50,60),("RSI 60–65",60,66),
+                  ("RSI 66–70",66,71),("RSI 71–80",71,81),("RSI ≥ 80",80,999)]
+    else:
+        RSI_BB = [("RSI < 25",0,25),("RSI 25–32",25,33),("RSI 33–40",33,41),
+                  ("RSI 41–48",41,49),("RSI ≥ 49",49,999)]
+
+    ADX_BB = [("ADX < 12",0,12),("ADX 12–17",12,18),("ADX 18–22",18,23),
+              ("ADX 23–27",23,28),("ADX ≥ 28",28,999)]
+    VOL_BB = [("Vol < 0.70",0,0.70),("Vol 0.70–1.0",0.70,1.0),
+              ("Vol 1.0–1.5",1.0,1.5),("Vol 1.5–2.5",1.5,2.5),("Vol ≥ 2.5",2.5,999)]
+    DUR_BB = [("< 10j",0,10),("10–30j",10,30),("30–60j",30,60),
+              ("60–90j",60,90),("≥ 90j",90,9999)]
+
+    html.append('<h2>9 — Synthèse avancée, cyclicité &amp; zones à éviter</h2>')
+
+    # ── 9a. Matrices croisées ─────────────────────────────────────────
+    html.append('<h3>Matrices croisées — Win% SL A (cellules colorées)</h3>')
+    html.append('<p style="font-size:12px;color:#666;margin-bottom:10px">'
+                'Chaque cellule = win% · rendement moyen SL A · nombre de signaux. '
+                'Gris = données insuffisantes (&lt; 2 signaux).</p>')
+
+    html.append('<div class="two-col">')
+
+    html.append('<div>')
+    html.append('<h3 style="margin-top:0">RSI × ADX</h3>')
+    html.append(_matrix_html(bb_data_view, RSI_BB, ADX_BB,
+                             lambda b: b["rsi"], lambda b: b["adx"],
+                             "RSI \\ ADX"))
+    html.append('</div>')
+
+    html.append('<div>')
+    html.append('<h3 style="margin-top:0">RSI × Volume</h3>')
+    html.append(_matrix_html(bb_data_view, RSI_BB, VOL_BB,
+                             lambda b: b["rsi"], lambda b: b["vol"],
+                             "RSI \\ Vol"))
+    html.append('</div>')
+
+    html.append('</div>')  # two-col
+
+    html.append('<h3>ADX × Volume</h3>')
+    html.append(_matrix_html(bb_data_view, ADX_BB, VOL_BB,
+                             lambda b: b["adx"], lambda b: b["vol"],
+                             "ADX \\ Vol",
+                             note="Un ADX faible confirme l'absence de tendance forte — la BB "
+                                  "a plus de chances d'agir comme résistance/support."))
+
+    # ── 9b. Cyclicité détaillée ────────────────────────────────────────
+    html.append('<h3>Cyclicité — évolution du win% selon la position dans le cycle</h3>')
+    html.append('<p style="font-size:12px;color:#666;margin-bottom:8px">'
+                'Analyse fine du moment optimal dans le cycle pour agir sur un signal BB. '
+                'L\'ancienneté du cycle est connue en temps réel (jours depuis le début du cycle).</p>')
+
+    DUR_DETAIL = [
+        ("J1–J5",   0,   6), ("J6–J10",   6,  11), ("J11–J20", 11,  21),
+        ("J21–J30", 21,  31), ("J31–J45", 31,  46), ("J46–J60", 46,  61),
+        ("J61–J90", 61,  91), ("J91–J120", 91, 121), ("≥ J121", 121, 9999),
+    ]
+
+    cyc_rows = []
+    for label, lo, hi in DUR_DETAIL:
+        sub = [b for b in bb_data_view if lo <= b["jours_ecoules"] < hi]
+        n   = len(sub)
+        if n == 0:
+            continue
+        w   = round(sum(1 for b in sub if b["pct_sla"] > 0) / n * 100)
+        moy = round(sum(b["pct_sla"] for b in sub) / n, 1)
+        wb  = round(sum(1 for b in sub if b["pct_slb"] > 0) / n * 100)
+        wc  = round(sum(1 for b in sub if b["pct_slc"] > 0) / n * 100)
+        wd  = round(sum(1 for b in sub if b["pct_sld"] > 0) / n * 100)
+        cyc_rows.append({
+            "label": label, "n": n, "w": w, "moy": moy,
+            "wb": wb, "wc": wc, "wd": wd,
+            "moy_slb": round(sum(b["pct_slb"] for b in sub)/n,1),
+            "moy_slc": round(sum(b["pct_slc"] for b in sub)/n,1),
+            "moy_sld": round(sum(b["pct_sld"] for b in sub)/n,1),
+        })
+
+    if cyc_rows:
+        # Bar chart win%
+        bars_c = ""
+        for r in cyc_rows:
+            col      = "#0f6e56" if r["w"] >= 55 else ("#ba7517" if r["w"] >= 40 else "#c0392b")
+            rend_col = "#0f6e56" if r["moy"] > 0 else "#a32d2d"
+            bars_c += (f'<div class="bar-row">'
+                       f'<div class="bar-lbl">{r["label"]}</div>'
+                       f'<div class="bar-track"><div class="bar-fill" style="width:{max(r["w"],3)}%;background:{col}">{r["w"]}%</div></div>'
+                       f'<div class="bar-meta">{r["n"]} sig.<br><span style="color:{rend_col};font-weight:600">{r["moy"]:+.1f}%</span></div>'
+                       f'</div>')
+        html.append(f'<div class="bar-sect"><div class="bar-sect-title">Win% SL A par phase du cycle (J = jours depuis début cycle)</div>{bars_c}</div>')
+
+        # Table détaillée cyclicité
+        hdr_c = (f'<thead><tr><th>Phase du cycle</th><th>N</th>'
+                 f'<th>Win% <span class="sla">A</span></th>'
+                 f'<th>Win% <span class="slb">B</span></th>'
+                 f'<th>Win% <span class="slc">C</span></th>'
+                 f'<th>Win% <span class="sld">D</span></th>'
+                 f'<th>Moy. <span class="sla">SL A</span></th>'
+                 f'<th>Moy. <span class="slb">SL B</span></th>'
+                 f'<th>Moy. <span class="slc">SL C</span></th>'
+                 f'<th>Moy. <span class="sld">SL D</span></th>'
+                 f'</tr></thead>')
+        body_c = '<tbody>'
+        best_phase = max(cyc_rows, key=lambda r: r["w"])
+        for r in cyc_rows:
+            cls = ' class="best"' if r is best_phase and r["w"] >= 55 else ""
+            body_c += (f'<tr{cls}><td><b>{r["label"]}</b></td><td>{r["n"]}</td>'
+                       f'<td>{win_b(r["w"])}</td><td>{win_b(r["wb"])}</td>'
+                       f'<td>{win_b(r["wc"])}</td><td>{win_b(r["wd"])}</td>'
+                       f'<td>{pct_b(r["moy"])}</td><td>{pct_b(r["moy_slb"])}</td>'
+                       f'<td>{pct_b(r["moy_slc"])}</td><td>{pct_b(r["moy_sld"])}</td></tr>')
+        body_c += '</tbody>'
+        html.append(f'<div class="table-wrap"><table>{hdr_c}{body_c}</table></div>')
+
+    # Distribution des signaux selon l'ancienneté
+    all_je = [b["jours_ecoules"] for b in bb_data_view]
+    if all_je:
+        max_je  = max(all_je)
+        bk_size = max(max_je // 12, 5)
+        n_bk    = max_je // bk_size + 1
+        buckets = []
+        for bi in range(n_bk):
+            lo_b  = bi * bk_size
+            hi_b  = (bi + 1) * bk_size
+            count = sum(1 for je in all_je if lo_b <= je < hi_b)
+            if count > 0 or lo_b <= max_je:
+                buckets.append((f"J{lo_b}–{hi_b}", count))
+        if buckets:
+            max_c  = max(c for _, c in buckets) or 1
+            d_bars = ""
+            for lbl, c in buckets:
+                h = max(round(c / max_c * 100), 1) if c > 0 else 0
+                d_bars += (f'<div class="dist-bar-col">'
+                           f'<div class="dist-bar-fill" style="height:{h}%;background:#378add;opacity:.7"></div>'
+                           f'<div class="dist-bar-cnt">{c if c > 0 else ""}</div>'
+                           f'<div class="dist-bar-lbl">{lbl}</div>'
+                           f'</div>')
+            html.append(f'<div class="dist-wrap">'
+                        f'<div class="dist-title">Distribution des signaux BB selon l\'ancienneté du cycle (concentration = cycles récurrents)</div>'
+                        f'<div class="dist-bars">{d_bars}</div>'
+                        f'</div>')
+
+    # ── 9c. Ce qui ne marche pas ──────────────────────────────────────
+    html.append('<h3 style="color:#a32d2d;margin-top:1.8rem">Ce qui ne marche pas — zones à éviter</h3>')
+    html.append('<p style="font-size:12px;color:#666;margin-bottom:8px">'
+                'Toutes les conditions avec Win% SL A &lt; 40% et ≥ 3 signaux, '
+                'classées par taux d\'échec décroissant.</p>')
+
+    BAD = []
+
+    # Par dimension simple
+    for dim, rows in [("RSI", bb_rsi), ("ADX", bb_adx), ("Volume", bb_vol), ("Durée cycle", bb_dur)]:
+        for r in rows:
+            if r["n"] >= 3 and r["win_pct_a"] < 40:
+                BAD.append({
+                    "dim": dim, "label": r["label"], "n": r["n"],
+                    "wa": r["win_pct_a"], "wb": r["win_pct_b"], "wc": r["win_pct_c"], "wd": r["win_pct_d"],
+                    "ma": r["moy_sla"],   "mb": r["moy_slb"],   "mc": r["moy_slc"],   "md": r["moy_sld"],
+                })
+
+    # Par mois
+    months_tmp = {}
+    for b in bb_data_view:
+        months_tmp.setdefault(b["date"].month, []).append(b)
+    for m, items in months_tmp.items():
+        n = len(items)
+        if n >= 3:
+            w = round(sum(1 for b in items if b["pct_sla"] > 0) / n * 100)
+            if w < 40:
+                BAD.append({
+                    "dim": "Mois",
+                    "label": MOIS_FR[m - 1], "n": n,
+                    "wa": w,
+                    "wb": round(sum(1 for b in items if b["pct_slb"] > 0) / n * 100),
+                    "wc": round(sum(1 for b in items if b["pct_slc"] > 0) / n * 100),
+                    "wd": round(sum(1 for b in items if b["pct_sld"] > 0) / n * 100),
+                    "ma": round(sum(b["pct_sla"] for b in items) / n, 1),
+                    "mb": round(sum(b["pct_slb"] for b in items) / n, 1),
+                    "mc": round(sum(b["pct_slc"] for b in items) / n, 1),
+                    "md": round(sum(b["pct_sld"] for b in items) / n, 1),
+                })
+
+    # Combinaisons croisées à risque
+    CROSS = [
+        (f"RSI ≥ {rsi_lo} + ADX ≥ 26",
+         lambda b: b["rsi"] >= rsi_lo and b["adx"] >= 26),
+        (f"RSI ≥ {rsi_lo} + ADX ≥ 22",
+         lambda b: b["rsi"] >= rsi_lo and b["adx"] >= 22),
+        (f"RSI ≥ {rsi_lo} + Vol ≥ 2.5",
+         lambda b: b["rsi"] >= rsi_lo and b["vol"] >= 2.5),
+        ("ADX ≥ 26 + Vol ≥ 2.0",
+         lambda b: b["adx"] >= 26 and b["vol"] >= 2.0),
+        ("ADX ≥ 26 + Vol ≥ 1.5",
+         lambda b: b["adx"] >= 26 and b["vol"] >= 1.5),
+        (f"RSI ≥ {rsi_lo} + Vol ≥ 1.5 + ADX ≥ 20",
+         lambda b: b["rsi"] >= rsi_lo and b["vol"] >= 1.5 and b["adx"] >= 20),
+        ("< 10j cycle + ADX ≥ 22",
+         lambda b: b["jours_ecoules"] < 10 and b["adx"] >= 22),
+        ("< 10j cycle + Vol ≥ 2.0",
+         lambda b: b["jours_ecoules"] < 10 and b["vol"] >= 2.0),
+        (f"< 10j cycle + RSI ≥ {rsi_lo}",
+         lambda b: b["jours_ecoules"] < 10 and b["rsi"] >= rsi_lo),
+    ]
+    for label, filt in CROSS:
+        sub = [b for b in bb_data_view if filt(b)]
+        n   = len(sub)
+        if n < 3:
+            continue
+        w = round(sum(1 for b in sub if b["pct_sla"] > 0) / n * 100)
+        if w < 45:
+            BAD.append({
+                "dim": "Combo",
+                "label": label, "n": n,
+                "wa": w,
+                "wb": round(sum(1 for b in sub if b["pct_slb"] > 0) / n * 100),
+                "wc": round(sum(1 for b in sub if b["pct_slc"] > 0) / n * 100),
+                "wd": round(sum(1 for b in sub if b["pct_sld"] > 0) / n * 100),
+                "ma": round(sum(b["pct_sla"] for b in sub) / n, 1),
+                "mb": round(sum(b["pct_slb"] for b in sub) / n, 1),
+                "mc": round(sum(b["pct_slc"] for b in sub) / n, 1),
+                "md": round(sum(b["pct_sld"] for b in sub) / n, 1),
+            })
+
+    BAD.sort(key=lambda x: x["wa"])  # Worst first
+
+    if BAD:
+        hdr_b = (f'<thead><tr><th>Type</th><th>Condition</th><th>N</th>'
+                 f'<th>Win% <span class="sla">A</span></th>'
+                 f'<th>Win% <span class="slb">B</span></th>'
+                 f'<th>Win% <span class="slc">C</span></th>'
+                 f'<th>Win% <span class="sld">D</span></th>'
+                 f'<th>Moy. <span class="sla">SL A</span></th>'
+                 f'<th>Moy. <span class="slb">SL B</span></th>'
+                 f'<th>Moy. <span class="slc">SL C</span></th>'
+                 f'<th>Moy. <span class="sld">SL D</span></th>'
+                 f'</tr></thead>')
+        body_b = '<tbody>'
+        for c in BAD:
+            body_b += (f'<tr class="worst">'
+                       f'<td><span class="badge br">{c["dim"]}</span></td>'
+                       f'<td><b>{c["label"]}</b></td><td>{c["n"]}</td>'
+                       f'<td>{win_b(c["wa"])}</td><td>{win_b(c["wb"])}</td>'
+                       f'<td>{win_b(c["wc"])}</td><td>{win_b(c["wd"])}</td>'
+                       f'<td>{pct_b(c["ma"])}</td><td>{pct_b(c["mb"])}</td>'
+                       f'<td>{pct_b(c["mc"])}</td><td>{pct_b(c["md"])}</td>'
+                       f'</tr>')
+        body_b += '</tbody>'
+        html.append(f'<div class="table-wrap"><table>{hdr_b}{body_b}</table></div>')
+
+        # Bar chart des pires conditions
+        worst_bars = ""
+        for c in BAD[:10]:
+            w   = c["wa"]
+            lbl = c["label"] if len(c["label"]) <= 38 else c["label"][:35] + "…"
+            worst_bars += (f'<div class="bar-row">'
+                           f'<div class="bar-lbl">{lbl}</div>'
+                           f'<div class="bar-track"><div class="bar-fill" style="width:{max(w,3)}%;background:#c0392b">{w}%</div></div>'
+                           f'<div class="bar-meta">{c["n"]} sig.<br><span style="color:#a32d2d;font-weight:600">{c["ma"]:+.1f}%</span></div>'
+                           f'</div>')
+        html.append(f'<div class="bar-sect"><div class="bar-sect-title">Pires conditions identifiées — Win% SL A (classées par taux d\'échec décroissant)</div>{worst_bars}</div>')
+    else:
+        html.append('<p style="color:#888;font-size:12px;padding:8px;background:#fff;border-radius:8px;border:0.5px solid #e0ddd6">'
+                    'Aucune condition clairement sous-performante identifiée (toutes les zones ≥ 40% win ou données insuffisantes).</p>')
+
+    return html
+
+
 # ─── Génération d'un panneau complet (BB ou Séquentiel) ──────────────────────
 
 def _panel_sections(bb_data_view, mode, sl_cumuls, best_sl_i, rsi_bb, adx_bb, vol_bb, dur_bb, is_seq=False):
@@ -849,6 +1168,9 @@ def _panel_sections(bb_data_view, mode, sl_cumuls, best_sl_i, rsi_bb, adx_bb, vo
             f'</div>'
         )
     html.append('</div>')
+
+    # ── 9 — Synthèse avancée ─────────────────────────────────────────
+    html.extend(_section_synthese(bb_data_view, mode, rsi_bb, adx_bb, vol_bb, dur_bb))
 
     return html
 
