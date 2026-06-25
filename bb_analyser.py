@@ -132,7 +132,7 @@ def bb_stat_rows(items, key_func, tranches):
         wc = sum(1 for it in sub if it["pct_slc"] > 0)
         wd = sum(1 for it in sub if it["pct_sld"] > 0)
         rows.append({
-            "label": label, "n": n,
+            "label": label, "n": n, "lo": lo, "hi": hi,
             "win_a": wa, "win_pct_a": round(wa / n * 100),
             "win_b": wb, "win_pct_b": round(wb / n * 100),
             "win_c": wc, "win_pct_c": round(wc / n * 100),
@@ -1018,30 +1018,100 @@ def _panel_sections(bb_data_view, mode, sl_cumuls, best_sl_i, rsi_bb, adx_bb, vo
                 '<span class="rank2">Argent</span> 50–59% · '
                 '<span class="rank3">Bronze</span> 40–49%</p>')
 
-    COMBOS = [
-        (f"RSI < {rsi_lo} + ADX < 18",
-         lambda b: b["rsi"] < rsi_lo and b["adx"] < 18),
-        (f"RSI < {rsi_lo} + ADX 18–22",
-         lambda b: b["rsi"] < rsi_lo and 18 <= b["adx"] < 23),
-        (f"RSI < {rsi_lo} + ADX 23–27",
-         lambda b: b["rsi"] < rsi_lo and 23 <= b["adx"] < 28),
-        (f"RSI ≥ {rsi_lo} + ADX < 20",
-         lambda b: b["rsi"] >= rsi_lo and b["adx"] < 20),
-        (f"RSI < {rsi_lo} + ADX < 22 + Vol < 2",
-         lambda b: b["rsi"] < rsi_lo and b["adx"] < 22 and b["vol"] < 2),
-        (f"RSI < {rsi_lo} + ADX ≥ 26",
-         lambda b: b["rsi"] < rsi_lo and b["adx"] >= 26),
-        ("Pays ✓ + Sect ✓ + ADX < 22",
-         lambda b: b["ok_pays"] and b["ok_secteur"] and b["adx"] < 22),
-        (f"Pays ✓ + Sect ✓ + RSI < {rsi_lo}",
-         lambda b: b["ok_pays"] and b["ok_secteur"] and b["rsi"] < rsi_lo),
-        (f"≥ 30j depuis début cycle + RSI < {rsi_lo}",
-         lambda b: b["jours_ecoules"] >= 30 and b["rsi"] < rsi_lo),
-        ("≥ 30j depuis début cycle + ADX < 22",
-         lambda b: b["jours_ecoules"] >= 30 and b["adx"] < 22),
-        (f"≥ 30j depuis début cycle + RSI < {rsi_lo} + ADX < 22",
-         lambda b: b["jours_ecoules"] >= 30 and b["rsi"] < rsi_lo and b["adx"] < 22),
-    ]
+    # Build dynamic combos from actual top-performing tranches
+    def _top(rows, n=3):
+        return sorted([r for r in rows if r["n"] >= 2], key=lambda r: r["win_pct_a"], reverse=True)[:n]
+
+    def _in(r):
+        lo, hi = r["lo"], r["hi"]
+        if hi == float("inf"):
+            return lambda b, lo=lo: b >= lo
+        return lambda b, lo=lo, hi=hi: lo <= b < hi
+
+    def _label(prefix, r):
+        lo, hi = r["lo"], r["hi"]
+        if lo == 0 or lo == float("-inf"):
+            return f"{prefix} < {int(hi)}"
+        if hi == float("inf"):
+            return f"{prefix} ≥ {int(lo)}"
+        return f"{prefix} {lo}–{hi}"
+
+    top_rsi = _top(bb_rsi, 3)
+    top_adx = _top(bb_adx, 3)
+    top_vol = _top(bb_vol, 3)
+    top_dur = _top(bb_dur, 2)
+
+    COMBOS = []
+    # RSI × ADX pairs
+    for rr in top_rsi[:2]:
+        for ar in top_adx[:2]:
+            lbl = _label("RSI", rr) + " + " + _label("ADX", ar)
+            rlo, rhi = rr["lo"], rr["hi"]
+            alo, ahi = ar["lo"], ar["hi"]
+            COMBOS.append((lbl, lambda b, rlo=rlo, rhi=rhi, alo=alo, ahi=ahi:
+                           (rlo <= b["rsi"] < (rhi if rhi != float("inf") else 1e9)) and
+                           (alo <= b["adx"] < (ahi if ahi != float("inf") else 1e9))))
+    # RSI × Vol pairs
+    for rr in top_rsi[:2]:
+        for vr in top_vol[:2]:
+            lbl = _label("RSI", rr) + " + " + _label("Vol", vr)
+            rlo, rhi = rr["lo"], rr["hi"]
+            vlo, vhi = vr["lo"], vr["hi"]
+            COMBOS.append((lbl, lambda b, rlo=rlo, rhi=rhi, vlo=vlo, vhi=vhi:
+                           (rlo <= b["rsi"] < (rhi if rhi != float("inf") else 1e9)) and
+                           (vlo <= b["vol"] < (vhi if vhi != float("inf") else 1e9))))
+    # ADX × Vol pairs
+    for ar in top_adx[:2]:
+        for vr in top_vol[:2]:
+            lbl = _label("ADX", ar) + " + " + _label("Vol", vr)
+            alo, ahi = ar["lo"], ar["hi"]
+            vlo, vhi = vr["lo"], vr["hi"]
+            COMBOS.append((lbl, lambda b, alo=alo, ahi=ahi, vlo=vlo, vhi=vhi:
+                           (alo <= b["adx"] < (ahi if ahi != float("inf") else 1e9)) and
+                           (vlo <= b["vol"] < (vhi if vhi != float("inf") else 1e9))))
+    # Top RSI × ADX × Vol triple
+    if top_rsi and top_adx and top_vol:
+        rr, ar, vr = top_rsi[0], top_adx[0], top_vol[0]
+        lbl = _label("RSI", rr) + " + " + _label("ADX", ar) + " + " + _label("Vol", vr)
+        rlo, rhi = rr["lo"], rr["hi"]
+        alo, ahi = ar["lo"], ar["hi"]
+        vlo, vhi = vr["lo"], vr["hi"]
+        COMBOS.append((lbl, lambda b, rlo=rlo, rhi=rhi, alo=alo, ahi=ahi, vlo=vlo, vhi=vhi:
+                       (rlo <= b["rsi"] < (rhi if rhi != float("inf") else 1e9)) and
+                       (alo <= b["adx"] < (ahi if ahi != float("inf") else 1e9)) and
+                       (vlo <= b["vol"] < (vhi if vhi != float("inf") else 1e9))))
+    # Dur × RSI / Dur × ADX
+    for dr in top_dur:
+        dlo, dhi = dr["lo"], dr["hi"]
+        if top_rsi:
+            rr = top_rsi[0]
+            rlo, rhi = rr["lo"], rr["hi"]
+            COMBOS.append((_label("Dur", dr) + "j + " + _label("RSI", rr),
+                           lambda b, dlo=dlo, dhi=dhi, rlo=rlo, rhi=rhi:
+                           (dlo <= b["jours_ecoules"] < (dhi if dhi != float("inf") else 1e9)) and
+                           (rlo <= b["rsi"] < (rhi if rhi != float("inf") else 1e9))))
+        if top_adx:
+            ar = top_adx[0]
+            alo, ahi = ar["lo"], ar["hi"]
+            COMBOS.append((_label("Dur", dr) + "j + " + _label("ADX", ar),
+                           lambda b, dlo=dlo, dhi=dhi, alo=alo, ahi=ahi:
+                           (dlo <= b["jours_ecoules"] < (dhi if dhi != float("inf") else 1e9)) and
+                           (alo <= b["adx"] < (ahi if ahi != float("inf") else 1e9))))
+    # Pays/secteur + top RSI/ADX
+    if top_rsi:
+        rr = top_rsi[0]
+        rlo, rhi = rr["lo"], rr["hi"]
+        COMBOS.append(("Pays ✓ + Sect ✓ + " + _label("RSI", rr),
+                       lambda b, rlo=rlo, rhi=rhi:
+                       b["ok_pays"] and b["ok_secteur"] and
+                       (rlo <= b["rsi"] < (rhi if rhi != float("inf") else 1e9))))
+    if top_adx:
+        ar = top_adx[0]
+        alo, ahi = ar["lo"], ar["hi"]
+        COMBOS.append(("Pays ✓ + Sect ✓ + " + _label("ADX", ar),
+                       lambda b, alo=alo, ahi=ahi:
+                       b["ok_pays"] and b["ok_secteur"] and
+                       (alo <= b["adx"] < (ahi if ahi != float("inf") else 1e9))))
 
     combo_rows = []
     for label, filt in COMBOS:
