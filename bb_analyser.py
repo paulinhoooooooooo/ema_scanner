@@ -1170,7 +1170,7 @@ def _panel_sections(bb_data_view, mode, sl_cumuls, best_sl_i, rsi_bb, adx_bb, vo
     html.append('</div>')
 
     # ── 9 — Synthèse avancée ─────────────────────────────────────────
-    html.extend(_section_synthese(bb_data_view, mode, rsi_bb, adx_bb, vol_bb, dur_bb))
+    html.extend(_section_synthese(bb_data_view, mode, bb_rsi, bb_adx, bb_vol, bb_dur))
 
     return html
 
