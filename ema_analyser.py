@@ -226,14 +226,14 @@ def simuler_sl(jours, entry_idx, mode, sl_init, palier, be=None):
 
 def calc_bb_rendement(jours, mode, sl_init, palier, be=None):
     """
-    Pour chaque jour avec une touche BB : simule SL depuis CE jour jusqu'à fin de cycle.
-    Retourne liste de (date, result_pct, rsi, adx, vol) et la somme totale.
+    Pour chaque touche BB indépendante : simule SL depuis CE jour jusqu'à fin de cycle.
+    Chaque touche BB est traitée indépendamment (même si déjà investi).
     """
     resultats = []
     total = 0.0
     for k, j in enumerate(jours):
         if not j["touche_bb"]:
-            continue  # uniquement les jours avec touche BB
+            continue
         res, _, _ = simuler_sl(jours, k, mode, sl_init, palier, be)
         total += res
         resultats.append({
@@ -243,6 +243,43 @@ def calc_bb_rendement(jours, mode, sl_init, palier, be=None):
             "adx":  j["adx"],
             "vol":  j["vol"],
         })
+    return resultats, round(total, 1)
+
+
+def calc_bb_rendement_seq(jours, mode, sl_init, palier, be=None):
+    """
+    Logique séquentielle : entre sur la première touche BB, reste investi jusqu'au SL,
+    puis attend la prochaine touche BB pour re-rentrer. Ignore les touches pendant qu'on
+    est investi.
+    """
+    resultats = []
+    total = 0.0
+    k = 0
+    while k < len(jours):
+        j = jours[k]
+        if not j["touche_bb"]:
+            k += 1
+            continue
+
+        # Entrée sur cette touche BB
+        res, raison, nb_jours = simuler_sl(jours, k, mode, sl_init, palier, be)
+        total += res
+        resultats.append({
+            "date":   j["date"],
+            "pct":    round(res, 1),
+            "raison": raison,
+            "rsi":    j["rsi"],
+            "adx":    j["adx"],
+            "vol":    j["vol"],
+        })
+
+        if raison == "Fin cycle":
+            # Trade tenu jusqu'à la fin du cycle, on s'arrête
+            break
+        else:
+            # SL déclenché : sauter les jours couverts par ce trade
+            k += nb_jours
+
     return resultats, round(total, 1)
 
 
@@ -387,12 +424,22 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         # BB touches
         nb_bb = sum(1 for j in jours if j["touche_bb"])
 
-        # BB rendement (SL A et SL B)
+        # BB rendement indépendant (SL A et SL B)
         bb_sla, sum_sla = calc_bb_rendement(jours, mode,
                                              SL_CONFIGS[0]["sl_init"],
                                              SL_CONFIGS[0]["palier"],
                                              SL_CONFIGS[0]["be"])
         bb_slb, sum_slb = calc_bb_rendement(jours, mode,
+                                             SL_CONFIGS[1]["sl_init"],
+                                             SL_CONFIGS[1]["palier"],
+                                             SL_CONFIGS[1]["be"])
+
+        # BB rendement séquentiel (SL A et SL B) — re-entre seulement après SL
+        bb_seq_sla, sum_seq_sla = calc_bb_rendement_seq(jours, mode,
+                                             SL_CONFIGS[0]["sl_init"],
+                                             SL_CONFIGS[0]["palier"],
+                                             SL_CONFIGS[0]["be"])
+        bb_seq_slb, sum_seq_slb = calc_bb_rendement_seq(jours, mode,
                                              SL_CONFIGS[1]["sl_init"],
                                              SL_CONFIGS[1]["palier"],
                                              SL_CONFIGS[1]["be"])
@@ -419,11 +466,15 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
             "ok_weekly":  ok_weekly,
             "sans_sl":    round(sans_sl, 2),
             "sl_results": sl_results,
-            "nb_bb":      nb_bb,
-            "bb_sla":     bb_sla,
-            "bb_slb":     bb_slb,
-            "sum_sla":    sum_sla,
-            "sum_slb":    sum_slb,
+            "nb_bb":         nb_bb,
+            "bb_sla":        bb_sla,
+            "bb_slb":        bb_slb,
+            "sum_sla":       sum_sla,
+            "sum_slb":       sum_slb,
+            "bb_seq_sla":    bb_seq_sla,
+            "bb_seq_slb":    bb_seq_slb,
+            "sum_seq_sla":   sum_seq_sla,
+            "sum_seq_slb":   sum_seq_slb,
         })
 
     if not resultats:
@@ -502,11 +553,15 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
   <th>BB touches</th>
   <th class="bb-col">Rendement BB (SL -2.5% / pal.5%)</th>
   <th class="bb-col2">Rendement BB (SL -5% / pal.5%)</th>
+  <th class="bb-col">BB Séquentiel (SL -2.5% / pal.5%)</th>
+  <th class="bb-col2">BB Séquentiel (SL -5% / pal.5%)</th>
 </tr></thead>
 <tbody>""")
 
     cumul_sla_global = 0.0
     cumul_slb_global = 0.0
+    cumul_seq_sla_global = 0.0
+    cumul_seq_slb_global = 0.0
 
     for idx, r in enumerate(resultats):
         # Badges principaux
@@ -543,15 +598,35 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         bb_sla_html = bb_subrows(r["bb_sla"], cumul_sla_global)
         bb_slb_html = bb_subrows(r["bb_slb"], cumul_slb_global)
 
+        # Colonnes séquentielles — sous-lignes avec raison de sortie
+        def bb_seq_subrows(bb_list):
+            html_sub = ""
+            for entry in bb_list:
+                pct_b  = badge_pct(entry["pct"])
+                date_b = f'<span class="badge bn" style="font-size:10px;margin-right:3px">{entry["date"].strftime("%d/%m/%Y")}</span>'
+                raison_b = f'<span class="badge bn" style="font-size:10px;margin-left:3px">{entry["raison"]}</span>'
+                indi   = f'<span class="bb-indi">RSI {entry["rsi"]} | ADX {entry["adx"]} | Vol {entry["vol"]:.2f}</span>'
+                html_sub += f'<div style="margin-bottom:2px">{date_b}{pct_b}{indi}{raison_b}</div>'
+            return html_sub
+
+        bb_seq_sla_html = bb_seq_subrows(r["bb_seq_sla"])
+        bb_seq_slb_html = bb_seq_subrows(r["bb_seq_slb"])
+
         # Totaux en bas de chaque cycle
-        sum_sla_b = badge_pct(r["sum_sla"])
-        sum_slb_b = badge_pct(r["sum_slb"])
+        sum_sla_b     = badge_pct(r["sum_sla"])
+        sum_slb_b     = badge_pct(r["sum_slb"])
+        sum_seq_sla_b = badge_pct(r["sum_seq_sla"])
+        sum_seq_slb_b = badge_pct(r["sum_seq_slb"])
 
-        bb_sla_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_sla_b}</div>'
-        bb_slb_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_slb_b}</div>'
+        bb_sla_html     += f'<div style="margin-top:4px;font-weight:500">∑{sum_sla_b}</div>'
+        bb_slb_html     += f'<div style="margin-top:4px;font-weight:500">∑{sum_slb_b}</div>'
+        bb_seq_sla_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_seq_sla_b}</div>'
+        bb_seq_slb_html += f'<div style="margin-top:4px;font-weight:500">∑{sum_seq_slb_b}</div>'
 
-        cumul_sla_global += r["sum_sla"]
-        cumul_slb_global += r["sum_slb"]
+        cumul_sla_global     += r["sum_sla"]
+        cumul_slb_global     += r["sum_slb"]
+        cumul_seq_sla_global += r["sum_seq_sla"]
+        cumul_seq_slb_global += r["sum_seq_slb"]
 
         html.append(f"""<tr>
 <td>{idx+1}</td>
@@ -569,6 +644,8 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 <td>{bb_badge}</td>
 <td class="bb-col">{bb_sla_html}</td>
 <td class="bb-col2">{bb_slb_html}</td>
+<td class="bb-col">{bb_seq_sla_html}</td>
+<td class="bb-col2">{bb_seq_slb_html}</td>
 </tr>""")
 
     # Ligne totaux
@@ -578,8 +655,10 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         t = round(sl_totaux[j]["total"], 1)
         tot_sl_cells += f"<td class='{sl['col_cls']}'><b>{badge_pct(t)}</b></td>"
 
-    total_sla_b = badge_pct(round(cumul_sla_global, 1))
-    total_slb_b = badge_pct(round(cumul_slb_global, 1))
+    total_sla_b     = badge_pct(round(cumul_sla_global, 1))
+    total_slb_b     = badge_pct(round(cumul_slb_global, 1))
+    total_seq_sla_b = badge_pct(round(cumul_seq_sla_global, 1))
+    total_seq_slb_b = badge_pct(round(cumul_seq_slb_global, 1))
 
     html.append(f"""<tr style="background:#f5f4f0;font-weight:600">
 <td colspan="10"><b>TOTAL</b></td>
@@ -588,6 +667,8 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 <td></td>
 <td class="bb-col"><b>∑{total_sla_b}</b></td>
 <td class="bb-col2"><b>∑{total_slb_b}</b></td>
+<td class="bb-col"><b>∑{total_seq_sla_b}</b></td>
+<td class="bb-col2"><b>∑{total_seq_slb_b}</b></td>
 </tr>""")
 
     html.append("</tbody></table></div>")
