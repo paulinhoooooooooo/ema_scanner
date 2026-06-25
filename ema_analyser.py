@@ -697,6 +697,10 @@ def main():
         Path(output).write_text(html, encoding="utf-8")
         print(f"  → Document généré : {output}")
 
+        # Ouvrir automatiquement dans le navigateur
+        import webbrowser, os
+        webbrowser.open(f"file:///{Path(output).resolve().as_posix()}")
+
 
 if __name__ == "__main__":
     main()
