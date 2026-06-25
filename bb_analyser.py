@@ -27,7 +27,7 @@ MOIS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","
 
 # ─── Construction du dataset ──────────────────────────────────────────────────
 
-def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
+def construire_donnees(cycles, mode, config, df_c, df_s):
     """
     Retourne (cycle_data, bb_data, bb_seq_data).
 
@@ -57,7 +57,6 @@ def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
 
         ok_p = verifier_cycle(df_c, signal_date, mode, config)
         ok_s = verifier_cycle(df_s, signal_date, mode, config)
-        ok_w = verifier_cycle(df_w, signal_date, mode, config)
 
         cycle_data.append({
             "signal_date": signal_date,
@@ -66,7 +65,7 @@ def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
             "sans_sl":  sans_sl,
             "pct_sla":  sl_pcts[0], "pct_slb": sl_pcts[1],
             "pct_slc":  sl_pcts[2], "pct_sld": sl_pcts[3],
-            "ok_pays": ok_p, "ok_secteur": ok_s, "ok_weekly": ok_w,
+            "ok_pays": ok_p, "ok_secteur": ok_s,
         })
 
         # ── bb_data : toutes touches BB (4 SL en parallèle) ───────────
@@ -85,7 +84,7 @@ def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
                 "pct_slc": bb_lists[2][i]["pct"],
                 "pct_sld": bb_lists[3][i]["pct"],
                 "jours_ecoules": date_to_idx.get(base["date"], 0),
-                "ok_pays": ok_p, "ok_secteur": ok_s, "ok_weekly": ok_w,
+                "ok_pays": ok_p, "ok_secteur": ok_s,
             })
 
         # ── bb_seq_data : séquentiel — gate = SL A ────────────────────
@@ -110,7 +109,7 @@ def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
                 "pct_slc": round(results[2][0], 1),
                 "pct_sld": round(results[3][0], 1),
                 "jours_ecoules": date_to_idx.get(j["date"], 0),
-                "ok_pays": ok_p, "ok_secteur": ok_s, "ok_weekly": ok_w,
+                "ok_pays": ok_p, "ok_secteur": ok_s,
             })
             if raison_a == "Fin cycle":
                 break
@@ -683,14 +682,12 @@ def _panel_sections(bb_data_view, mode, sl_cumuls, best_sl_i, rsi_bb, adx_bb, vo
     html.append(bar_chart_win(bb_dur, "Win% SL A selon l'ancienneté du cycle"))
     html.append('</div>')
     html.append('<div>')
-    html.append('<h3>Filtres top-down et Vue hebdomadaire au signal BB</h3>')
+    html.append('<h3>Filtres top-down au signal BB</h3>')
     html.append(td_table([
         ("Pays ✓ + Secteur ✓", lambda b: b["ok_pays"] and b["ok_secteur"]),
         ("Pays ✓ seul",         lambda b: b["ok_pays"] and not b["ok_secteur"]),
         ("Secteur ✓ seul",      lambda b: not b["ok_pays"] and b["ok_secteur"]),
         ("Aucun filtre",        lambda b: not b["ok_pays"] and not b["ok_secteur"]),
-        ("Vue W ✓",             lambda b: b["ok_weekly"]),
-        ("Vue W ✗",             lambda b: not b["ok_weekly"]),
     ], bb_data_view))
     html.append('</div>')
     html.append('</div>')  # two-col
@@ -725,10 +722,6 @@ def _panel_sections(bb_data_view, mode, sl_cumuls, best_sl_i, rsi_bb, adx_bb, vo
          lambda b: b["jours_ecoules"] >= 30 and b["adx"] < 22),
         (f"≥ 30j depuis début cycle + RSI < {rsi_lo} + ADX < 22",
          lambda b: b["jours_ecoules"] >= 30 and b["rsi"] < rsi_lo and b["adx"] < 22),
-        (f"Vue W ✓ + RSI < {rsi_lo}",
-         lambda b: b["ok_weekly"] and b["rsi"] < rsi_lo),
-        (f"Vue W ✓ + ADX < 22",
-         lambda b: b["ok_weekly"] and b["adx"] < 22),
     ]
 
     combo_rows = []
@@ -1014,12 +1007,11 @@ def main():
             print(f"  → Données insuffisantes pour {ticker}, ignoré.")
             continue
 
-        df_weekly = telecharger(ticker, "1wk", args.period)
-        cycles    = detecter_cycles(df, config, args.mode)
+        cycles = detecter_cycles(df, config, args.mode)
         print(f"  → {len(cycles)} cycle(s) détecté(s)")
 
         cycle_data, bb_data, bb_seq_data = construire_donnees(
-            cycles, args.mode, config, df_country, df_sector, df_weekly
+            cycles, args.mode, config, df_country, df_sector
         )
         print(f"  → {len(bb_data)} signal(s) BB · {len(bb_seq_data)} signal(s) séquentiels")
 

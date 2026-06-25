@@ -286,7 +286,7 @@ def calc_bb_rendement_seq(jours, mode, sl_init, palier, be=None):
     return resultats, round(total, 1)
 
 
-# ─── Indicateurs pays / secteur / vue hebdo ───────────────────────────────────
+# ─── Indicateurs pays / secteur ──────────────────────────────────────────────
 
 def verifier_cycle(df_index, date, mode, config):
     """True si l'index est dans le cycle correspondant au mode à la date donnée."""
@@ -374,7 +374,7 @@ def badge_check(ok):
 
 
 def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
-                 config, df_country, df_sector, df_weekly, period):
+                 config, df_country, df_sector, period):
     """Génère le HTML complet."""
 
     mode_label = "SHORT" if mode == "short" else "LONG"
@@ -469,11 +469,10 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         adx = j0["adx"]
         vol = j0["vol"]
 
-        # Pays / Secteur / Vue W
+        # Pays / Secteur
         signal_date = cycle["signal_date"]
         ok_pays    = verifier_cycle(df_country, signal_date, mode, config)
         ok_secteur = verifier_cycle(df_sector,  signal_date, mode, config)
-        ok_weekly  = verifier_cycle(df_weekly,  signal_date, mode, config)
 
         resultats.append({
             "signal_date": signal_date,
@@ -482,7 +481,6 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
             "rsi": rsi, "adx": adx, "vol": vol,
             "ok_pays":    ok_pays,
             "ok_secteur": ok_secteur,
-            "ok_weekly":  ok_weekly,
             "sans_sl":    round(sans_sl, 2),
             "sl_results": sl_results,
             "nb_bb":         nb_bb,
@@ -572,7 +570,7 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
     html.append('<div class="table-wrap"><table>')
     html.append("""<thead><tr>
   <th>#</th><th>Signal N</th><th>Entrée N+1</th><th>Durée</th>
-  <th>RSI</th><th>ADX</th><th>Vol×</th><th>Pays</th><th>Secteur</th><th>Vue W</th>
+  <th>RSI</th><th>ADX</th><th>Vol×</th><th>Pays</th><th>Secteur</th>
   <th>Sans SL (cycle entier)</th>
   <th class="sl-a-col">SL A (-2.5% / pal.5%)</th>
   <th class="sl-b-col">SL B (-5% / pal.5%)</th>
@@ -706,7 +704,6 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 <td><span class="badge {vol_cls}">{r['vol']:.2f}</span></td>
 <td>{badge_check(r['ok_pays'])}</td>
 <td>{badge_check(r['ok_secteur'])}</td>
-<td>{badge_check(r['ok_weekly'])}</td>
 <td>{sans_sl_badge}</td>
 {sl_cells}
 <td>{bb_badge}</td>
@@ -806,16 +803,13 @@ def main():
             print(f"  → Données insuffisantes pour {ticker}, ignoré.")
             continue
 
-        # Vue hebdomadaire du même ticker
-        df_weekly = telecharger(ticker, "1wk", args.period)
-
         cycles = detecter_cycles(df, config, args.mode)
         print(f"  → {len(cycles)} cycle(s) détecté(s)")
 
         html = generer_html(
             ticker, cycles, args.mode,
             args.country, args.sector,
-            config, df_country, df_sector, df_weekly,
+            config, df_country, df_sector,
             args.period
         )
 
