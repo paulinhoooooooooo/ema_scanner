@@ -154,13 +154,14 @@ def detecter_cycles(df, config, mode):
             bh  = float(bh_s.iloc[i]) if not pd.isna(bh_s.iloc[i]) else None
             bb  = float(bb_s.iloc[i]) if not pd.isna(bb_s.iloc[i]) else None
 
-            # Touche BB :
-            # LONG  → prix <= bande basse (survente en haussier)
-            # SHORT → prix >= bande haute (surachat en baissier)  ← CORRECTION
+            # Touche BB avec tolérance (config bollinger.tolerance_pct)
+            # LONG  → prix proche de la bande basse par le bas
+            # SHORT → prix proche de la bande haute par le haut
+            tol = cfg_bol.get("tolerance_pct", 1.0) / 100.0
             if mode == "short":
-                touche_bb = (bh is not None and prix >= bh)
+                touche_bb = (bh is not None and prix >= bh * (1 - tol))
             else:
-                touche_bb = (bb is not None and prix <= bb)
+                touche_bb = (bb is not None and prix <= bb * (1 + tol))
 
             cycle_courant["jours"].append({
                 "date":      df.index[i],

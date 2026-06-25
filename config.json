@@ -18,7 +18,8 @@
   "bollinger": {
     "actif": true,
     "periode": 20,
-    "ecarts": 2
+    "ecarts": 2,
+    "tolerance_pct": 1.0
   },
   "signaux": {
     "long_actif": true,
