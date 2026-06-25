@@ -368,91 +368,23 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
   <span style="font-size:14px;padding:3px 10px;border-radius:4px;background:#f0ede8;color:#555;margin-left:6px">{period}</span>
 </h1>
 <p class="meta">Pays : {country_t or '—'} · Secteur : {sector_t or '—'} · Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')} · RSI/ADX méthode Wilder · Entrée au close N+1</p>
-<p class="note">Ce rapport analyse <b>{nb_cycles} cycles {mode_label.lower()}s</b> et <b>{nb_bb} signaux BB intra-cycle</b>. Les sections 1–8 couvrent le niveau des cycles (conditions d'entrée). Les sections 9–15 se focalisent sur les signaux Bollinger.</p>
+<p class="note">Ce rapport analyse <b>{nb_cycles} cycles {mode_label.lower()}s</b> et <b>{nb_bb} signaux BB intra-cycle</b>. Toutes les sections portent exclusivement sur les signaux Bollinger.</p>
 """]
 
     # ─── KPIs ──────────────────────────────────────────────────────────
     html.append('<div class="kpis">')
     html.append(f'<div class="kpi"><div class="kl">Cycles {mode_label}</div><div class="kv">{nb_cycles}</div></div>')
-    wr_ss = round(wins_ss / nb_cycles * 100)
-    html.append(f'<div class="kpi"><div class="kl">Win rate cycles</div><div class="kv {"green" if wr_ss >= 50 else "red"}">{wr_ss}%</div></div>')
-    html.append(f'<div class="kpi"><div class="kl">Cumulé sans SL</div><div class="kv {"green" if cumul_ss >= 0 else "red"}">{cumul_ss:+.1f}%</div></div>')
-    html.append(f'<div class="kpi"><div class="kl">Meilleur SL</div><div class="kv" style="font-size:16px;color:{SL_CFGS[best_sl_i]["color"]}">{SL_CFGS[best_sl_i]["nom"]} ({sl_cumuls[best_sl_i]:+.1f}%)</div></div>')
     if nb_bb > 0:
         wr_bb = round(bb_wins_a / nb_bb * 100)
         html.append(f'<div class="kpi"><div class="kl">Signaux BB</div><div class="kv">{nb_bb}</div></div>')
-        html.append(f'<div class="kpi"><div class="kl">Win% BB (SL A)</div><div class="kv {"green" if wr_bb >= 50 else "red"}">{wr_bb}%</div></div>')
-        html.append(f'<div class="kpi"><div class="kl">Cumulé BB (SL A)</div><div class="kv {"green" if bb_cumul_a >= 0 else "red"}">{bb_cumul_a:+.1f}%</div></div>')
+        for i, sl in enumerate(SL_CFGS):
+            cum_bb = round(sum(b[f"pct_sl{sl['key'][-1]}"] for b in bb_data), 1)
+            wr_bb_sl = round(sum(1 for b in bb_data if b[f"pct_sl{sl['key'][-1]}"] > 0) / nb_bb * 100)
+            html.append(f'<div class="kpi"><div class="kl">Win% BB {sl["nom"]}</div><div class="kv {"green" if wr_bb_sl >= 50 else "red"}">{wr_bb_sl}%</div></div>')
     html.append('</div>')
 
-    # ─── Section 1 : Résumé SL ─────────────────────────────────────────
-    html.append('<h2>1 — Résumé des stratégies SL sur les cycles</h2>')
-    html.append('<div class="table-wrap"><table><thead><tr><th>Stratégie</th><th>Règle</th><th>Win rate</th><th>Cumulé</th><th>Note</th></tr></thead><tbody>')
-    for i, sl in enumerate(SL_CFGS):
-        wr = round(sl_wins[i] / nb_cycles * 100)
-        cum = sl_cumuls[i]
-        is_best = (i == best_sl_i)
-        tr_s = ' style="background:#fffbf0"' if is_best else ''
-        note = " ← meilleur cumulé" if is_best else ""
-        html.append(f'<tr{tr_s}><td><b><span class="{sl["key"]}">{sl["nom"]}</span></b>{note}</td>'
-                    f'<td style="color:#666">{sl["desc"]}</td>'
-                    f'<td>{win_b(wr, f" ({sl_wins[i]}/{nb_cycles})")}</td>'
-                    f'<td>{pct_b(cum)}</td>'
-                    f'<td style="font-size:11px;color:#666">{"Capture les grandes tendances" if sl["palier"] >= 7.5 else "Protection rapide" if sl["sl_init"] == -2.5 and sl["be"] is None else "Bon compromis" if sl["sl_init"] == -5.0 else "Breakeven intégré"}</td></tr>')
-    html.append('</tbody></table></div>')
-
-    # ─── Tranches pour les cycles ───────────────────────────────────────
-    RSI_C = [("RSI < 50",0,50),("RSI 50–59",50,60),("RSI 60–65",60,66),("RSI 66–70",66,71),("RSI ≥ 71",71,999)]
-    ADX_C = [("ADX < 12",0,12),("ADX 12–17",12,18),("ADX 18–22",18,23),("ADX 23–27",23,28),("ADX ≥ 28",28,999)]
-    VOL_C = [("Vol < 0.85",0,0.85),("Vol 0.85–1.10",0.85,1.10),("Vol 1.10–1.60",1.10,1.60),("Vol ≥ 1.60",1.60,999)]
-    DUR_C = [("< 10j",0,10),("10–40j",10,40),("40–70j",40,70),("70–110j",70,110),("≥ 110j",110,9999)]
-
-    html.append('<h2>2 — RSI d\'entrée (signal de cycle)</h2>')
-    rsi_c = stat_rows(cycle_data, lambda c: c["rsi"], RSI_C)
-    html.append(auto_obs_cycle(rsi_c))
-    html.append(cycle_table(rsi_c))
-
-    html.append('<h2>3 — ADX d\'entrée (signal de cycle)</h2>')
-    adx_c = stat_rows(cycle_data, lambda c: c["adx"], ADX_C)
-    html.append(auto_obs_cycle(adx_c))
-    html.append(cycle_table(adx_c))
-
-    html.append('<h2>4 — Volume d\'entrée (signal de cycle)</h2>')
-    vol_c = stat_rows(cycle_data, lambda c: c["vol"], VOL_C)
-    html.append(auto_obs_cycle(vol_c))
-    html.append(cycle_table(vol_c))
-
-    html.append('<h2>5 — Durée des cycles</h2>')
-    dur_c = stat_rows(cycle_data, lambda c: c["duree"], DUR_C)
-    html.append(auto_obs_cycle(dur_c))
-    html.append(cycle_table(dur_c))
-
-    html.append('<h2>6 — Filtres top-down (Pays + Secteur)</h2>')
-    html.append(td_table([
-        ("Pays ✓ + Secteur ✓", lambda c: c["ok_pays"] and c["ok_secteur"]),
-        ("Pays ✓ seul (Secteur ✗)", lambda c: c["ok_pays"] and not c["ok_secteur"]),
-        ("Secteur ✓ seul (Pays ✗)", lambda c: not c["ok_pays"] and c["ok_secteur"]),
-        ("Aucun filtre", lambda c: not c["ok_pays"] and not c["ok_secteur"]),
-    ], cycle_data))
-
-    html.append('<h2>7 — Vue Weekly</h2>')
-    html.append(td_table([
-        ("Vue W ✓ confirmée", lambda c: c["ok_weekly"]),
-        ("Vue W ✗ absente",   lambda c: not c["ok_weekly"]),
-    ], cycle_data))
-
-    html.append('<h2>8 — Saisonnalité des cycles (mois du signal)</h2>')
-    months_c = {}
-    for c in cycle_data:
-        months_c.setdefault(c["signal_date"].month, []).append(c)
-    html.append(mois_table(months_c, is_bb=False))
-
-    # ═══════════════════════════════════════════════════
-    # PARTIE BB (focus principal)
-    # ═══════════════════════════════════════════════════
-
     if not bb_data:
-        html.append('<h2 class="bb-title">9 — Signaux Bollinger</h2>')
+        html.append('<h2>1 — Signaux Bollinger</h2>')
         html.append('<p style="color:#888;padding:8px">Aucun signal BB détecté sur cette période.</p>')
         html.append(f'<p class="footer">BB Analyser · {ticker} · {period} · {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>')
         html.append('</body></html>')
@@ -471,7 +403,7 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
     # jours_ecoules = durée du cycle AU MOMENT du toucher BB (connu en temps réel)
     DUR_BB  = [("< 10j depuis début cycle",0,10),("10–30j",10,30),("30–60j",30,60),("60–90j",60,90),("≥ 90j",90,9999)]
 
-    html.append('<h2 class="bb-title">9 — Signaux Bollinger — Vue d\'ensemble</h2>')
+    html.append('<h2 class="bb-title">1 — Signaux Bollinger — Vue d\'ensemble</h2>')
 
     # Tableau résumé global avec combos clés
     COMBOS_OV = [
@@ -520,28 +452,28 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
                     f'<td>{pct_b(mslc)}</td><td>{pct_b(msld)}</td></tr>')
     html.append(f'<div class="table-wrap"><table>{hdr_ov}{body_ov}</tbody></table></div>')
 
-    html.append('<h2>10 — RSI au moment du signal BB</h2>')
+    html.append('<h2>2 — RSI au moment du signal BB</h2>')
     bb_rsi = bb_stat_rows(bb_data, lambda b: b["rsi"], RSI_BB)
     html.append(auto_obs_bb(bb_rsi))
     html.append(bb_table(bb_rsi))
 
-    html.append('<h2>11 — ADX au moment du signal BB</h2>')
+    html.append('<h2>3 — ADX au moment du signal BB</h2>')
     bb_adx = bb_stat_rows(bb_data, lambda b: b["adx"], ADX_BB)
     html.append(auto_obs_bb(bb_adx))
     html.append(bb_table(bb_adx))
 
-    html.append('<h2>12 — Volume au moment du signal BB</h2>')
+    html.append('<h2>4 — Volume au moment du signal BB</h2>')
     bb_vol = bb_stat_rows(bb_data, lambda b: b["vol"], VOL_BB)
     html.append(auto_obs_bb(bb_vol))
     html.append(bb_table(bb_vol))
 
-    html.append('<h2>13 — Saisonnalité des signaux BB</h2>')
+    html.append('<h2>5 — Saisonnalité des signaux BB</h2>')
     months_bb = {}
     for b in bb_data:
         months_bb.setdefault(b["date"].month, []).append(b)
     html.append(mois_table(months_bb, is_bb=True))
 
-    html.append('<h2>14 — Contexte du cycle hôte et filtres top-down</h2>')
+    html.append('<h2>6 — Contexte du cycle hôte et filtres top-down</h2>')
     html.append('<div class="two-col">')
 
     html.append('<div><h3>Ancienneté du cycle au moment du toucher BB</h3><p style="font-size:11px;color:#888;margin-bottom:6px">Nombre de jours écoulés depuis le début du cycle — information disponible en temps réel.</p>')
@@ -563,8 +495,8 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
 
     html.append('</div>')  # two-col
 
-    # ─── Section 15 : Combinaisons ──────────────────────────────────────
-    html.append('<h2>15 — Combinaisons optimales BB</h2>')
+    # ─── Section 7 : Combinaisons ──────────────────────────────────────
+    html.append('<h2>7 — Combinaisons optimales BB</h2>')
 
     rsi_lo = 50 if mode == "short" else 40
     COMBOS = [
@@ -626,8 +558,8 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
                    f'<td>{pct_b(mslc)}</td><td>{pct_b(msld)}</td></tr>')
     html.append(f'<div class="table-wrap"><table>{hdr_c}{body_c}</tbody></table></div>')
 
-    # ─── Section 16 : Checklist ─────────────────────────────────────────
-    html.append('<h2>16 — Checklist d\'entrée optimale (BB)</h2>')
+    # ─── Section 8 : Checklist ─────────────────────────────────────────
+    html.append('<h2>8 — Checklist d\'entrée optimale (BB)</h2>')
 
     # Dériver les meilleurs filtres automatiquement
     def best_bb_filter(rows):
