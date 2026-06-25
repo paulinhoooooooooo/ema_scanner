@@ -536,7 +536,7 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 </style>
 </head>
 <body>
-<h1>Analyse EMA — {ticker} <span style="font-size:14px;padding:3px 10px;border-radius:4px;background:{'#fcebeb' if mode=='short' else '#eaf3de'};color:{mode_color};margin-left:8px">{mode_label}</span></h1>
+<h1>Analyse EMA — {ticker} <span style="font-size:14px;padding:3px 10px;border-radius:4px;background:{'#fcebeb' if mode=='short' else '#eaf3de'};color:{mode_color};margin-left:8px">{mode_label}</span> <span style="font-size:14px;padding:3px 10px;border-radius:4px;background:#f0ede8;color:#555;margin-left:6px">{period}</span></h1>
 <p class="meta">Pays : {country_ticker or '—'} &nbsp;|&nbsp; Secteur : {sector_ticker or '—'} &nbsp;|&nbsp; Mode : {mode_label} &nbsp;|&nbsp; Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
 <p class="note">RSI et ADX méthode Wilder (identique TradingView) · Indicateurs lus au bar N (signal) · Entrée au close N+1</p>
 """]
