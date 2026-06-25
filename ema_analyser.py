@@ -442,12 +442,6 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
     total_sum_sla = sum(r["sum_sla"] for r in resultats)
     total_sum_slb = sum(r["sum_slb"] for r in resultats)
 
-    # ── Chart data ────────────────────────────────────────────────────
-    labels_chart = [f"#{i+1}" for i in range(nb_cycles)]
-    data_sans_sl = [round(r["sans_sl"], 2) for r in resultats]
-    data_sla     = [r["sl_results"][0]["pct"] for r in resultats]
-    data_slb     = [r["sl_results"][1]["pct"] for r in resultats]
-    data_slc     = [r["sl_results"][2]["pct"] for r in resultats]
 
     # ── HTML ──────────────────────────────────────────────────────────
     html = [f"""<!DOCTYPE html>
@@ -455,7 +449,6 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
 <head>
 <meta charset="UTF-8">
 <title>EMA Analyser — {ticker}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 {CSS}
 </style>
@@ -490,16 +483,6 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
         </div>"""
     html.append(f'<div class="sl-compare">{sl_card_html}</div>')
 
-    # Graphique
-    html.append(f"""<div class="chart-box">
-<div class="legend">
-  <span><div class="dot" style="background:rgba(100,100,100,0.5)"></div> Sans SL</span>
-  <span><div class="dot" style="background:{SL_CONFIGS[0]['chart_color']}"></div> SL A</span>
-  <span><div class="dot" style="background:{SL_CONFIGS[1]['chart_color']}"></div> SL B</span>
-  <span><div class="dot" style="background:{SL_CONFIGS[2]['chart_color']}"></div> SL C</span>
-</div>
-<canvas id="chart" style="height:200px"></canvas>
-</div>""")
 
     # Section title
     section = "haussiers" if mode == "long" else "baissiers"
@@ -609,38 +592,10 @@ def generer_html(ticker, cycles, mode, country_ticker, sector_ticker,
     # Footer
     html.append(f'<p class="footer">Généré par EMA Analyser · {ticker} · {period} · {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>')
 
-    # Chart.js script
-    html.append(f"""<script>
-new Chart(document.getElementById('chart'),{{
-  type:'bar',
-  data:{{
-    labels:{json_list(labels_chart)},
-    datasets:[
-      {{label:'Sans SL', data:{json_list(data_sans_sl)}, backgroundColor:'rgba(100,100,100,0.5)', borderWidth:0, borderRadius:2}},
-      {{label:'SL A -2.5%', data:{json_list(data_sla)}, backgroundColor:'{SL_CONFIGS[0]["chart_color"]}', borderWidth:0, borderRadius:2}},
-      {{label:'SL B -5%',   data:{json_list(data_slb)}, backgroundColor:'{SL_CONFIGS[1]["chart_color"]}', borderWidth:0, borderRadius:2}},
-      {{label:'SL C -7.5%', data:{json_list(data_slc)}, backgroundColor:'{SL_CONFIGS[2]["chart_color"]}', borderWidth:0, borderRadius:2}}
-    ]
-  }},
-  options:{{
-    responsive:true, maintainAspectRatio:false,
-    plugins:{{legend:{{display:false}}}},
-    scales:{{
-      x:{{grid:{{display:false}}, ticks:{{font:{{size:11}}}}}},
-      y:{{ticks:{{font:{{size:11}},callback:v=>v+'%'}}, grid:{{color:'rgba(0,0,0,0.05)'}}}}
-    }}
-  }}
-}});
-</script>
-</body>
-</html>""")
+    html.append("</body>\n</html>")
 
     return "\n".join(html)
 
-
-def json_list(lst):
-    import json
-    return json.dumps(lst)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
