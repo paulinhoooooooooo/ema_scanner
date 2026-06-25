@@ -76,8 +76,14 @@ def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
             for sl in SL_CFGS
         ]
 
+        # Index de chaque jour dans le cycle (pour calculer jours_ecoules)
+        date_to_idx = {j["date"]: idx for idx, j in enumerate(jours)}
+
         for i in range(len(bb_lists[0])):
             base = bb_lists[0][i]
+            # jours_ecoules = nb de jours depuis le début du cycle au moment du toucher
+            # → c'est ce qu'on SAIT en temps réel (contrairement à la durée totale)
+            jours_ecoules = date_to_idx.get(base["date"], 0)
             bb_data.append({
                 "date": base["date"],
                 "rsi":  base["rsi"], "adx": base["adx"], "vol": base["vol"],
@@ -85,7 +91,8 @@ def construire_donnees(cycles, mode, config, df_c, df_s, df_w):
                 "pct_slb": bb_lists[1][i]["pct"],
                 "pct_slc": bb_lists[2][i]["pct"],
                 "pct_sld": bb_lists[3][i]["pct"],
-                "cycle_duree": len(jours),
+                "jours_ecoules": jours_ecoules,
+                "cycle_duree":   len(jours),
                 "ok_pays":    ok_p, "ok_secteur": ok_s, "ok_weekly": ok_w,
             })
 
@@ -461,7 +468,8 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
 
     ADX_BB  = [("ADX < 12",0,12),("ADX 12–17",12,18),("ADX 18–22",18,23),("ADX 23–27",23,28),("ADX ≥ 28",28,999)]
     VOL_BB  = [("Vol < 0.70",0,0.70),("Vol 0.70–1.0",0.70,1.0),("Vol 1.0–1.5",1.0,1.5),("Vol 1.5–2.5",1.5,2.5),("Vol ≥ 2.5",2.5,999)]
-    DUR_BB  = [("Cycle < 40j",0,40),("Cycle 40–70j",40,70),("Cycle 70–110j",70,110),("Cycle ≥ 110j",110,9999)]
+    # jours_ecoules = durée du cycle AU MOMENT du toucher BB (connu en temps réel)
+    DUR_BB  = [("< 10j depuis début cycle",0,10),("10–30j",10,30),("30–60j",30,60),("60–90j",60,90),("≥ 90j",90,9999)]
 
     html.append('<h2 class="bb-title">9 — Signaux Bollinger — Vue d\'ensemble</h2>')
 
@@ -536,8 +544,8 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
     html.append('<h2>14 — Contexte du cycle hôte et filtres top-down</h2>')
     html.append('<div class="two-col">')
 
-    html.append('<div><h3>Durée du cycle hôte</h3>')
-    bb_dur = bb_stat_rows(bb_data, lambda b: b["cycle_duree"], DUR_BB)
+    html.append('<div><h3>Ancienneté du cycle au moment du toucher BB</h3><p style="font-size:11px;color:#888;margin-bottom:6px">Nombre de jours écoulés depuis le début du cycle — information disponible en temps réel.</p>')
+    bb_dur = bb_stat_rows(bb_data, lambda b: b["jours_ecoules"], DUR_BB)
     html.append(bb_table(bb_dur))
     html.append(auto_obs_bb(bb_dur))
     html.append('</div>')
@@ -576,12 +584,12 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
          lambda b: b["ok_pays"] and b["ok_secteur"] and b["adx"] < 22),
         (f"Pays ✓ + Sect ✓ + RSI < {rsi_lo}",
          lambda b: b["ok_pays"] and b["ok_secteur"] and b["rsi"] < rsi_lo),
-        (f"Cycle ≥ 70j + RSI < {rsi_lo}",
-         lambda b: b["cycle_duree"] >= 70 and b["rsi"] < rsi_lo),
-        ("Cycle ≥ 70j + ADX < 22",
-         lambda b: b["cycle_duree"] >= 70 and b["adx"] < 22),
-        (f"Cycle ≥ 70j + RSI < {rsi_lo} + ADX < 22",
-         lambda b: b["cycle_duree"] >= 70 and b["rsi"] < rsi_lo and b["adx"] < 22),
+        (f"≥ 30j depuis début cycle + RSI < {rsi_lo}",
+         lambda b: b["jours_ecoules"] >= 30 and b["rsi"] < rsi_lo),
+        ("≥ 30j depuis début cycle + ADX < 22",
+         lambda b: b["jours_ecoules"] >= 30 and b["adx"] < 22),
+        (f"≥ 30j depuis début cycle + RSI < {rsi_lo} + ADX < 22",
+         lambda b: b["jours_ecoules"] >= 30 and b["rsi"] < rsi_lo and b["adx"] < 22),
     ]
 
     combo_rows = []
@@ -656,8 +664,8 @@ def generer_analyse(ticker, cycle_data, bb_data, mode, country_t, sector_t, peri
         checklist.append(("Volume au signal BB", "Optionnel", "#888",
             f'{best_vol["label"]} — {best_vol["win_pct_a"]}% win SL A'))
     if best_dur and best_dur["win_pct_a"] >= 60:
-        checklist.append(("Durée cycle hôte", "Optionnel", "#888",
-            f'{best_dur["label"]} — {best_dur["win_pct_a"]}% win : préférer les signaux BB dans les cycles longs'))
+        checklist.append(("Ancienneté du cycle", "Optionnel", "#888",
+            f'{best_dur["label"]} — {best_dur["win_pct_a"]}% win : meilleur moment pour entrer sur BB'))
     if best_m:
         m_label = MOIS_FR[best_m[0]-1]
         wr_m = round(sum(1 for b in best_m[1] if b["pct_sla"] > 0)/len(best_m[1])*100)
